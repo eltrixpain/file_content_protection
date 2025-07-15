@@ -5,12 +5,15 @@
 #include <regex>
 #include <string>
 
-class RegexConfigManager {
+class ConfigManager {
 public:
     bool loadFromFile(const std::string& path);
     bool matches(const std::string& text) const;
+    const std::string& getWatchPath() const;
+
 
 private:
+    std::string watch_path;
     std::vector<std::regex> patterns;
 };
 

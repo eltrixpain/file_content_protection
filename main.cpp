@@ -1,8 +1,14 @@
 // === main.cpp ===
 #include "CoreEngine.hpp"
+#include "ConfigManager.hpp" 
+#include <iostream>
 
 int main() {
-    const char* watch_path = "/home/liarokan/Desktop/project_university/file_content_protection/docs/";
-    start_core_engine(watch_path);
+    ConfigManager config;
+    if (!config.loadFromFile("./config.json")) {
+        std::cerr << "[Main] Failed to load configuration file.\n";
+        return 1;
+    }
+    start_core_engine(config);
     return 0;
 }

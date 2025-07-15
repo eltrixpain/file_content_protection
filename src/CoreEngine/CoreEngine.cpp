@@ -1,7 +1,7 @@
 // === src/CoreEngine/CoreEngine.cpp ===
 #include "CoreEngine.hpp"
 #include "Logger.hpp"
-#include "RegexConfigManager.hpp" 
+#include "ConfigManager.hpp" 
 
 #include <iostream>
 #include <fcntl.h>
@@ -11,10 +11,11 @@
 #include <cstring>
 #include <cstdlib>
 
+
 #define BUF_SIZE 4096
 #define LOG_PATH "/tmp/fileguard.log"
 
-void handle_event(int fan_fd, const fanotify_event_metadata* metadata, pid_t logger_pid, int log_pipe_fd, const RegexConfigManager& regexManager)
+void handle_event(int fan_fd, const fanotify_event_metadata* metadata, pid_t logger_pid, int log_pipe_fd, const ConfigManager& config)
  {
     if (metadata->fd < 0) return;
     bool allow = true;
@@ -33,7 +34,7 @@ void handle_event(int fan_fd, const fanotify_event_metadata* metadata, pid_t log
         lseek(metadata->fd, 0, SEEK_SET);
         char content[2048] = {0};
         ssize_t size_of_read = read(metadata->fd, content, sizeof(content));
-        if (size_of_read > 0 && regexManager.matches(content)) {
+        if (size_of_read > 0 && config.matches(content)) {
             allow = false;
             std::string log_entry = std::to_string(metadata->pid) + " BLOCKED: " + path_buf + "\n";
             write(log_pipe_fd, log_entry.c_str(), log_entry.size());
@@ -48,11 +49,12 @@ void handle_event(int fan_fd, const fanotify_event_metadata* metadata, pid_t log
     close(metadata->fd);
 }
 
-void start_core_engine(const char* watch_path) {
+void start_core_engine(const ConfigManager& config) {
+    std::string watch_path = config.getWatchPath();
     int fan_fd = fanotify_init(FAN_CLASS_CONTENT | FAN_CLOEXEC | FAN_NONBLOCK, O_RDONLY | O_LARGEFILE);
     if (fan_fd == -1) { perror("fanotify_init"); exit(1); }
 
-    if (fanotify_mark(fan_fd, FAN_MARK_ADD, FAN_OPEN_PERM | FAN_EVENT_ON_CHILD, AT_FDCWD, watch_path) == -1) {
+    if (fanotify_mark(fan_fd, FAN_MARK_ADD, FAN_OPEN_PERM | FAN_EVENT_ON_CHILD, AT_FDCWD, watch_path.c_str()) == -1) {
         perror("fanotify_mark"); exit(1);
     }
 
@@ -68,11 +70,6 @@ void start_core_engine(const char* watch_path) {
         exit(0);
     }
 
-    RegexConfigManager regexManager; 
-    if (!regexManager.loadFromFile("./regex_patterns.txt")) {
-        std::cerr << "Failed to load regex patterns.\n";
-        exit(1);
-    }
 
 
     std::cout << "[CoreEngine] Watching " << watch_path << " for access events...\n";
@@ -89,7 +86,7 @@ void start_core_engine(const char* watch_path) {
                 std::cerr << "Mismatched fanotify version!" << std::endl;
                 exit(1);
             }
-            handle_event(fan_fd, metadata, logger_pid, log_pipe[1],regexManager);
+            handle_event(fan_fd, metadata, logger_pid, log_pipe[1],config);
             metadata = FAN_EVENT_NEXT(metadata, len);
         }
     }
