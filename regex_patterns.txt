@@ -1,0 +1,4 @@
+SECRET
+password
+smgh
+token=[a-z0-9]+

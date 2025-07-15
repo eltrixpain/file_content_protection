@@ -5,7 +5,8 @@ INCLUDE_DIR = include
 SRC_FILES = \
 	main.cpp \
 	src/CoreEngine/CoreEngine.cpp \
-	src/Logger/Logger.cpp
+	src/Logger/Logger.cpp\
+	src/RegexConfigManager/RegexConfigManager.cpp
 
 all: fileguard
 

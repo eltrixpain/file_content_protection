@@ -1,6 +1,7 @@
 // === src/CoreEngine/CoreEngine.cpp ===
 #include "CoreEngine.hpp"
 #include "Logger.hpp"
+#include "RegexConfigManager.hpp" 
 
 #include <iostream>
 #include <fcntl.h>
@@ -13,7 +14,8 @@
 #define BUF_SIZE 4096
 #define LOG_PATH "/tmp/fileguard.log"
 
-void handle_event(int fan_fd, const fanotify_event_metadata* metadata, pid_t logger_pid, int log_pipe_fd) {
+void handle_event(int fan_fd, const fanotify_event_metadata* metadata, pid_t logger_pid, int log_pipe_fd, const RegexConfigManager& regexManager)
+ {
     if (metadata->fd < 0) return;
     bool allow = true;
     bool is_self = (metadata->pid == logger_pid);
@@ -31,7 +33,7 @@ void handle_event(int fan_fd, const fanotify_event_metadata* metadata, pid_t log
         lseek(metadata->fd, 0, SEEK_SET);
         char content[2048] = {0};
         ssize_t size_of_read = read(metadata->fd, content, sizeof(content));
-        if (size_of_read > 0 && std::strstr(content, "SECRET") != nullptr) {
+        if (size_of_read > 0 && regexManager.matches(content)) {
             allow = false;
             std::string log_entry = std::to_string(metadata->pid) + " BLOCKED: " + path_buf + "\n";
             write(log_pipe_fd, log_entry.c_str(), log_entry.size());
@@ -66,6 +68,13 @@ void start_core_engine(const char* watch_path) {
         exit(0);
     }
 
+    RegexConfigManager regexManager; 
+    if (!regexManager.loadFromFile("./regex_patterns.txt")) {
+        std::cerr << "Failed to load regex patterns.\n";
+        exit(1);
+    }
+
+
     std::cout << "[CoreEngine] Watching " << watch_path << " for access events...\n";
 
     char buffer[BUF_SIZE];
@@ -80,7 +89,7 @@ void start_core_engine(const char* watch_path) {
                 std::cerr << "Mismatched fanotify version!" << std::endl;
                 exit(1);
             }
-            handle_event(fan_fd, metadata, logger_pid, log_pipe[1]);
+            handle_event(fan_fd, metadata, logger_pid, log_pipe[1],regexManager);
             metadata = FAN_EVENT_NEXT(metadata, len);
         }
     }
