@@ -7,7 +7,8 @@ SRC_FILES = \
 	main.cpp \
 	src/CoreEngine/CoreEngine.cpp \
 	src/Logger/Logger.cpp \
-	src/ConfigManager/ConfigManager.cpp
+	src/ConfigManager/ConfigManager.cpp \
+	src/RuleEvaluator/RuleEvaluator.cpp
 
 .PHONY: all clean
 
