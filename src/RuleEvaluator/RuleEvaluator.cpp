@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <sstream>
 #include <cstring>
+#include <ctime>
 
 RuleEvaluator::RuleEvaluator(const ConfigManager& config) : config(config) {}
 
@@ -29,8 +30,11 @@ void RuleEvaluator::handle_event(int fan_fd, const struct fanotify_event_metadat
         ssize_t size_of_read = read(metadata->fd, content, sizeof(content));
         if (size_of_read > 0 && config.matches(content)) {
             allow = false;
-            std::string log_entry = std::to_string(metadata->pid) + " BLOCKED: " + path_buf + "\n";
-            write(log_pipe_fd, log_entry.c_str(), log_entry.size());
+            std::time_t now = std::time(0);
+            char* date_time = std::ctime(&now);
+            date_time[strlen(date_time) - 1] = '\0';
+            std::string log_line = "[" + std::string(date_time) + "] BLOCKED: " + path_buf + " for PID [" + std::to_string(metadata->pid)  + "]\n";
+            write(log_pipe_fd, log_line.c_str(), log_line.size());
         }
     }
 
