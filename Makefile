@@ -1,21 +1,21 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -O2
 INCLUDE_DIR = include
-TARGET = fileguard
 
 SRC_FILES = \
-	main.cpp \
-	src/CoreEngine/CoreEngine.cpp \
-	src/Logger/Logger.cpp \
-	src/ConfigManager/ConfigManager.cpp \
-	src/RuleEvaluator/RuleEvaluator.cpp
+    main.cpp \
+    src/CoreEngine/CoreEngine.cpp \
+    src/Logger/Logger.cpp \
+    src/ConfigManager/ConfigManager.cpp \
+    src/RuleEvaluator/RuleEvaluator.cpp \
+    src/ContentParser/ContentParser.cpp
 
-.PHONY: all clean
+LIBS = `pkg-config --cflags --libs poppler-cpp`
 
-all: $(TARGET)
+all: fileguard
 
-$(TARGET): $(SRC_FILES)
-	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) -o $@ $^
+fileguard:
+	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) -o fileguard $(SRC_FILES) $(LIBS)
 
 clean:
-	rm -f $(TARGET)
+	rm -f fileguard
