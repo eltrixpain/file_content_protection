@@ -38,6 +38,5 @@ std::string ContentParser::extract_text_from_pdf_data(const std::string& data) {
             text += "\n";
         }
     }
-
     return text;
 }
