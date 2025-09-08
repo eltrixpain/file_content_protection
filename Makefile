@@ -8,7 +8,8 @@ SRC_FILES = \
     src/Logger/Logger.cpp \
     src/ConfigManager/ConfigManager.cpp \
     src/RuleEvaluator/RuleEvaluator.cpp \
-    src/ContentParser/ContentParser.cpp
+    src/ContentParser/ContentParser.cpp \
+    src/CacheManager/CacheManager.cpp
 
 LIBS = `pkg-config --cflags --libs poppler-cpp` -lsqlite3
 

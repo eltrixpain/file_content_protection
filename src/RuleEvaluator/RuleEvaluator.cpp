@@ -15,13 +15,19 @@ RuleEvaluator::RuleEvaluator(const ConfigManager& config) : config(config) {}
 void RuleEvaluator::handle_event(int fan_fd,
                                  const struct fanotify_event_metadata* metadata,
                                  pid_t logger_pid,
-                                 int log_pipe_fd) {
+                                 int log_pipe_fd,
+                                 int& out_decision,
+                                 uint64_t& out_matched_mask) {
+    // defaults
+    out_decision = 0;      // 0=ALLOW
+    out_matched_mask = 0;  // no matches
+
     if (metadata->fd < 0) return;
     bool allow = true;
     bool is_self = (metadata->pid == logger_pid);
 
     if (!is_self) {
-        /* ---------- گرفتن مسیر ---------- */
+        // get path
         char fd_link[64];
         snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
 
@@ -34,45 +40,45 @@ void RuleEvaluator::handle_event(int fan_fd,
             strncpy(path_buf, "[unknown]", sizeof(path_buf));
         }
 
-        /* ---------- خواندن کل فایل ---------- */
+        // read whole file
         struct stat st{};
         if (fstat(metadata->fd, &st) == -1 || st.st_size == 0) goto RESPOND;
 
         std::vector<char> buffer(st.st_size);
         ssize_t done = 0;
         while (done < st.st_size) {
-            ssize_t r = pread(metadata->fd,
-                              buffer.data() + done,
-                              st.st_size - done,
-                              done);
+            ssize_t r = pread(metadata->fd, buffer.data() + done, st.st_size - done, done);
             if (r <= 0) break;
             done += r;
         }
         if (done != st.st_size) goto RESPOND;
 
-        std::string header(buffer.data(),std::min<size_t>(5, buffer.size()));  
+        std::string header(buffer.data(), std::min<size_t>(5, buffer.size()));
         std::string type = ContentParser::detect_type(path_buf, header);
-        std::string extracted = ContentParser::extract_text(type,std::string(buffer.data(),buffer.size()));
+        std::string extracted = ContentParser::extract_text(type, std::string(buffer.data(), buffer.size()));
 
-        /* ---------- اعمال قوانین ---------- */
+        // apply rules
         if (config.matches(extracted)) {
             allow = false;
+            out_decision = 1;      // BLOCK
+            out_matched_mask = 0;  // TODO: fill if you add per-rule mask later
 
             std::time_t now = std::time(nullptr);
             char* date_time = std::ctime(&now);
-            date_time[strlen(date_time) - 1] = '\0';            // حذف '\n'
+            date_time[strlen(date_time) - 1] = '\0'; // strip '\n'
 
-            std::string log_line = "[" + std::string(date_time) + "] BLOCKED: "
-                                 + path_buf + " for PID ["
-                                 + std::to_string(metadata->pid) + "]\n";
-            write(log_pipe_fd, log_line.c_str(), log_line.size());
+            std::string log_line = "[" + std::string(date_time) + "] BLOCKED: " +
+                                   path_buf + " for PID [" + std::to_string(metadata->pid) + "]\n";
+            (void)write(log_pipe_fd, log_line.c_str(), log_line.size()); // ignore retval
         }
     }
 
 RESPOND:
+    // respond
     struct fanotify_response resp{
         .fd       = metadata->fd,
-        .response = allow ? (__u32)FAN_ALLOW : (__u32)FAN_DENY};
-    write(fan_fd, &resp, sizeof(resp));
+        .response = allow ? (__u32)FAN_ALLOW : (__u32)FAN_DENY
+    };
+    (void)write(fan_fd, &resp, sizeof(resp)); // ignore retval
     close(metadata->fd);
 }

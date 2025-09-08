@@ -118,7 +118,7 @@ int main() {
         std::cerr << "[Main] aborted due to cache DB init error\n";
         return 1;
     }
-    start_core_engine(config);
+    start_core_engine(config, cache_db);
     return 0;
 }
 
