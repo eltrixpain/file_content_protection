@@ -16,11 +16,9 @@ void RuleEvaluator::handle_event(int fan_fd,
                                  const struct fanotify_event_metadata* metadata,
                                  pid_t logger_pid,
                                  int log_pipe_fd,
-                                 int& out_decision,
-                                 uint64_t& out_matched_mask) {
+                                 int& out_decision) {
     // defaults
     out_decision = 0;      // 0=ALLOW
-    out_matched_mask = 0;  // no matches
 
     if (metadata->fd < 0) return;
     bool allow = true;
@@ -61,7 +59,6 @@ void RuleEvaluator::handle_event(int fan_fd,
         if (config.matches(extracted)) {
             allow = false;
             out_decision = 1;      // BLOCK
-            out_matched_mask = 0;  // TODO: fill if you add per-rule mask later
 
             std::time_t now = std::time(nullptr);
             char* date_time = std::ctime(&now);

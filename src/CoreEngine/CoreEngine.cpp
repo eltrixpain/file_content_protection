@@ -66,15 +66,13 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 struct stat st{};
                 if (fstat(metadata->fd, &st) == 0) {
                     int decision = 0;
-                    uint64_t matched_mask = 0;
 
                     // try cache
-                    if (cache.get(st, RULESET_VERSION, decision, matched_mask)) {
+                    if (cache.get(st, RULESET_VERSION, decision)) {
 
                         std::cout << "[cache] hit: dev=" << st.st_dev
                                     << " ino=" << st.st_ino
                                     << " decision=" << decision
-                                    << " mask=" << matched_mask
                                     << std::endl;
                                     
                         struct fanotify_response resp{};
@@ -87,8 +85,8 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                     }
 
                     // miss → evaluate, then cache.put
-                    evaluator.handle_event(fan_fd, metadata, logger_pid, log_pipe[1], decision, matched_mask);
-                    cache.put(st, RULESET_VERSION, decision, matched_mask);
+                    evaluator.handle_event(fan_fd, metadata, logger_pid, log_pipe[1], decision);
+                    cache.put(st, RULESET_VERSION, decision);
                     metadata = FAN_EVENT_NEXT(metadata, len);
                     continue;
                 }

@@ -19,14 +19,12 @@ CREATE TABLE IF NOT EXISTS cache_entries (
   size            INTEGER NOT NULL,
   ruleset_version INTEGER NOT NULL,
   decision        INTEGER NOT NULL,     -- 0=ALLOW, 1=BLOCK
-  matched_mask    INTEGER NOT NULL,     -- bitmask of matched patterns
   updated_at      INTEGER NOT NULL,
   PRIMARY KEY (dev, ino)
 );
 
 CREATE INDEX IF NOT EXISTS idx_cache_version ON cache_entries(ruleset_version);
 CREATE INDEX IF NOT EXISTS idx_cache_updated ON cache_entries(updated_at);
-
 )SQL";
 
 // returns opened handle or nullptr on error
