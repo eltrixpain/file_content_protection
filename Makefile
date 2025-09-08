@@ -10,7 +10,7 @@ SRC_FILES = \
     src/RuleEvaluator/RuleEvaluator.cpp \
     src/ContentParser/ContentParser.cpp
 
-LIBS = `pkg-config --cflags --libs poppler-cpp`
+LIBS = `pkg-config --cflags --libs poppler-cpp` -lsqlite3
 
 all: fileguard
 
