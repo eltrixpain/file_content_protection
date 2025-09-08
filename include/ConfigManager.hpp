@@ -10,7 +10,7 @@ public:
     bool loadFromFile(const std::string& path);
     bool matches(const std::string& text) const;
     const std::string& getWatchPath() const;
-
+    size_t patternCount() const; 
 
 private:
     std::string watch_path;

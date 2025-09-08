@@ -41,3 +41,7 @@ bool ConfigManager::matches(const std::string& text) const {
     }
     return false;
 }
+
+size_t ConfigManager::patternCount() const {
+    return patterns.size(); // count compiled patterns
+}

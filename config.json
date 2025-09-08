@@ -1,8 +1,5 @@
 {
-  "watch_path": "/home/liarokan/Desktop/project_university/file_content_protection/docs",
+  "watch_path": "/home/matrix/Desktop/test_project",
   "patterns": [
-    "SECRET",
-    "password",
-    "token=\\w+"
   ]
 }
