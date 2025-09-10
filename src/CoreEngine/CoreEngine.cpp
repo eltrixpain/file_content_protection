@@ -66,23 +66,44 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 struct stat st{};
                 if (fstat(metadata->fd, &st) == 0) {
                     int decision = 0;
-
                     // try cache
                     if (cache.get(st, RULESET_VERSION, decision)) {
 
                         std::cout << "[cache] hit: dev=" << st.st_dev
-                                    << " ino=" << st.st_ino
-                                    << " decision=" << decision
-                                    << std::endl;
-                                    
+                                  << " ino=" << st.st_ino
+                                  << " decision=" << decision
+                                  << std::endl;
+
                         struct fanotify_response resp{};
                         resp.fd = metadata->fd;
                         resp.response = (decision == 0) ? FAN_ALLOW : FAN_DENY;
+                        // If block
+                        if (decision != 0) {
+                            // find path of file
+                            char path_buf[512];
+                            snprintf(path_buf, sizeof(path_buf), "/proc/self/fd/%d", metadata->fd);
+                            char realpath_buf[512];
+                            ssize_t r = readlink(path_buf, realpath_buf, sizeof(realpath_buf) - 1);
+                            if (r > 0) {
+                                realpath_buf[r] = '\0';
+                                // timestamp
+                                std::time_t now = std::time(nullptr);
+                                char* date_time = std::ctime(&now);
+                                date_time[strlen(date_time) - 1] = '\0';
+                            
+                                std::string log_line = "[" + std::string(date_time) + "] BLOCKED: " +
+                                                       realpath_buf + " for PID [" +
+                                                       std::to_string(metadata->pid) + "]\n";
+                                (void)write(log_pipe[1], log_line.c_str(), log_line.size());
+                            }
+                        }
+                        // fanotify answer
                         (void)write(fan_fd, &resp, sizeof(resp));
                         close(metadata->fd);
                         metadata = FAN_EVENT_NEXT(metadata, len);
                         continue;
-                    }
+                        }
+
 
                     // miss → evaluate, then cache.put
                     evaluator.handle_event(fan_fd, metadata, logger_pid, log_pipe[1], decision);
