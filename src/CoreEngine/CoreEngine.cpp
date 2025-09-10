@@ -48,7 +48,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
     struct fanotify_event_metadata* metadata;
 
     CacheManager cache(cache_db);                   
-    const uint64_t RULESET_VERSION = 1; //TODO
+    const uint64_t RULESET_VERSION = config.getRulesetVersion();
 
     while (true) {
         ssize_t len = read(fan_fd, buffer, sizeof(buffer));

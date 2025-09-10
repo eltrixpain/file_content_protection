@@ -11,6 +11,7 @@
 static const char* kSchemaSQL = R"SQL(
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
+PRAGMA foreign_keys=ON;
 
 CREATE TABLE IF NOT EXISTS cache_entries (
   dev             INTEGER NOT NULL,
@@ -25,7 +26,20 @@ CREATE TABLE IF NOT EXISTS cache_entries (
 
 CREATE INDEX IF NOT EXISTS idx_cache_version ON cache_entries(ruleset_version);
 CREATE INDEX IF NOT EXISTS idx_cache_updated ON cache_entries(updated_at);
+
+-- Meta key/value store for ruleset versioning
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+-- Seed defaults (idempotent)
+INSERT OR IGNORE INTO meta(key, value) VALUES ('ruleset_version','1');
+INSERT OR IGNORE INTO meta(key, value) VALUES ('ruleset_hash','');
+
 )SQL";
+
+
 
 // returns opened handle or nullptr on error
 sqlite3* init_cache_db(const std::string& db_path) {
@@ -47,6 +61,10 @@ sqlite3* init_cache_db(const std::string& db_path) {
         return nullptr;
     }
     return db;
+}
+
+static void ensure_dir(const char* path) {
+    ::mkdir(path, 0755); 
 }
 
 // config log helper
@@ -100,6 +118,8 @@ static bool validate_config(const ConfigManager& config) {
 
 
 int main() {
+    ensure_dir("logs");
+    ensure_dir("cache");
     ConfigManager config;
     if (!config.loadFromFile("./config.json")) {
         cfglog("[config] failed to load ./config.json");
@@ -114,6 +134,10 @@ int main() {
     sqlite3* cache_db = init_cache_db("cache/cache.sqlite"); // keep under project logs/
     if (!cache_db) {
         std::cerr << "[Main] aborted due to cache DB init error\n";
+        return 1;
+    }
+    if (!config.initRulesetVersion(cache_db)) {
+        std::cerr << "[Main] failed to init ruleset version\n";
         return 1;
     }
     start_core_engine(config, cache_db);
