@@ -56,7 +56,7 @@ void RuleEvaluator::handle_event(int fan_fd,
         std::string extracted = ContentParser::extract_text(type, std::string(buffer.data(), buffer.size()));
 
         // apply rules
-        if (config.matches(extracted)) {
+        if (config.matches(extracted)) {   
             allow = false;
             out_decision = 1;      // BLOCK
 

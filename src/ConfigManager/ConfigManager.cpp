@@ -21,38 +21,39 @@ static inline std::string toLower(std::string s) {
     return s;
 }
 
-bool ConfigManager::loadFromFile(const std::string& path) {
-    std::ifstream f(path);
-    if (!f) return false;
+bool ConfigManager::loadFromFile(const std::string& config_path) {
+    std::ifstream file(config_path);
+    if (!file.is_open()) return false;
 
-    json j; 
-    try { f >> j; }
-    catch (...) { return false; }
+    json j;
+    file >> j;
 
     // watch_path
-    if (!j.contains("watch_path") || !j["watch_path"].is_string())
-        return false;
+    if (!j.contains("watch_path") || !j["watch_path"].is_string()) return false;
     watch_path = j["watch_path"].get<std::string>();
 
-    // patterns: array of strings
-    if (!j.contains("patterns") || !j["patterns"].is_array())
-        return false;
 
-    pattern_strings_.clear();
+    if (!j.contains("patterns") || !j["patterns"].is_array()) return false;
+
     patterns.clear();
+    pattern_strings_.clear();
+
     for (const auto& p : j["patterns"]) {
         if (!p.is_string()) continue;
-        std::string pat = p.get<std::string>();
+        const std::string pat = p.get<std::string>();
         pattern_strings_.push_back(pat);
+
         try {
-            patterns.emplace_back(pat, std::regex::ECMAScript);
-        } catch (...) {
-            // اگر pattern بد بود، می‌تونی لاگ کنی و رد شی
+            // case-insensitive عمومی
+            patterns.emplace_back(pat, std::regex::ECMAScript | std::regex::icase);
+        } catch (const std::regex_error&) {
+            std::cerr << "[ConfigManager] Invalid regex: " << pat << "\n";
         }
     }
 
     return true;
 }
+
 
 bool ConfigManager::matches(const std::string& text) const {
     for (const auto& re : patterns) {
