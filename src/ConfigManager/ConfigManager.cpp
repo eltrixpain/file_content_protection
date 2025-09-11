@@ -21,19 +21,6 @@ static inline std::string toLower(std::string s) {
     return s;
 }
 
-#include "ConfigManager.hpp"
-#include <fstream>
-#include <algorithm>
-#include <cctype>
-#include <iostream>
-#include <nlohmann/json.hpp>
-using nlohmann::json;
-
-static inline std::string toLower(std::string s) {
-    for (char& c : s) c = (char)std::tolower((unsigned char)c);
-    return s;
-}
-
 bool ConfigManager::loadFromFile(const std::string& config_path) {
     std::ifstream file(config_path);
     if (!file.is_open()) return false;
