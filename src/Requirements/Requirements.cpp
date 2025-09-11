@@ -111,7 +111,7 @@ bool Requirements::validateConfig(const ConfigManager& cfg, StartupResult& out) 
     return true;
 }
 
-
+// Create tables in DB
 bool Requirements::initCacheDb(const std::string& db_path, StartupResult& out) {
     sqlite3* raw = nullptr;
     int rc = sqlite3_open_v2(db_path.c_str(), &raw,
@@ -136,6 +136,7 @@ bool Requirements::initCacheDb(const std::string& db_path, StartupResult& out) {
     return true;
 }
 
+// check the rule set version
 bool Requirements::initRulesetVersion(StartupResult& out) {
     if (!out.config.initRulesetVersion(out.db.get())) {
         out.error = "[cache] failed to init ruleset version in meta";
@@ -145,6 +146,7 @@ bool Requirements::initRulesetVersion(StartupResult& out) {
     out.logs.push_back("[cache] ruleset_version ready");
     return true;
 }
+
 
 StartupResult Requirements::run(const std::string& config_path,
                                 const std::string& db_path) {

@@ -3,8 +3,8 @@
 #include <ctime>
 #include <iostream>
 
-// حذف کامل matched_mask از امضا و منطق
 
+// check cache table result ---> hit or miss
 bool CacheManager::get(const struct stat& st, uint64_t ruleset_version, int& decision) {
     if (!db_) return false;
 
@@ -43,6 +43,7 @@ bool CacheManager::get(const struct stat& st, uint64_t ruleset_version, int& dec
     return hit;
 }
 
+// put new record into the hash table
 void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int decision) {
     if (!db_) return;
 

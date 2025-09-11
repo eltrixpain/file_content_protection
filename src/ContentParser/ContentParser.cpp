@@ -21,6 +21,7 @@ std::string ContentParser::extract_text(const std::string& type,
 }
 
 
+// PDF parser
 std::string ContentParser::extract_text_from_pdf_data(const std::string& data) {
     poppler::byte_array ba;
     ba.assign(data.begin(), data.end());  

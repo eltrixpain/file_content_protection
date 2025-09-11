@@ -21,6 +21,7 @@ static inline std::string toLower(std::string s) {
     return s;
 }
 
+// load config file from json format and fill the class attribute
 bool ConfigManager::loadFromFile(const std::string& config_path) {
     std::ifstream file(config_path);
     if (!file.is_open()) return false;
@@ -66,7 +67,7 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
 }
 
 
-
+// Check the content against the patters in config file
 bool ConfigManager::matches(const std::string& text) const {
     for (const auto& re : patterns) {
         if (std::regex_search(text, re)) return true;
@@ -74,23 +75,20 @@ bool ConfigManager::matches(const std::string& text) const {
     return false;
 }
 
+// return number of patterns
 size_t ConfigManager::patternCount() const { return patterns.size(); }
 
-// --- canonicalization: JSON با کلیدهای ثابت + الگوهای مرتب‌شده ---
+// Get all pattern for rule set hash calculation
 std::string ConfigManager::canonicalRulesJson() const {
-    // ترتیب الگوها را مستقل کنیم
+    // order in patterns doesn't matter.
     std::vector<std::string> sorted = pattern_strings_;
     std::sort(sorted.begin(), sorted.end());
-
-    // JSON کانُنیکال: فقط چیزهایی که روی policy اثر دارند
     json c;
     c["patterns"]   = sorted;
-
-    // dump بدون space (ثابت)
     return c.dump();
 }
 
-// --- hash helper ---
+// hash calculator
 std::string ConfigManager::hashCanonical(const std::string& data) {
 #ifdef USE_OPENSSL_SHA256
     unsigned char out[32];
@@ -121,7 +119,7 @@ std::string ConfigManager::hashCanonical(const std::string& data) {
 #endif
 }
 
-// --- version init/sync with DB meta ---
+// Check the rule set version with calculation the hash of patterns in config file and compare with last hash in db
 bool ConfigManager::initRulesetVersion(sqlite3* db) {
     if (!db) return false;
 
