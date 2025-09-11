@@ -12,11 +12,13 @@
 #include <sys/stat.h>
 #include <cstring>
 #include <cstdlib>
-#include <unistd.h>     // getpid
+#include <unistd.h>     
 
 #define BUF_SIZE 4096
 
 void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
+    // [Fanotify registration]
+    // get data for register fanotify from config file
     const std::string mode   = config.getWatchMode();
     const std::string target = config.getWatchTarget();
 
@@ -36,6 +38,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
         exit(1);
     }
 
+    // [Create new thread for logging]
     int log_pipe[2];
     if (pipe(log_pipe) == -1) { perror("pipe"); exit(1); }
 
@@ -48,37 +51,33 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
         _exit(0);
     }
 
-    // === NEW: record our own pid for self-filtering
+    // [Initialize and assignment for prepration]
     pid_t self_pid = getpid();
-
     RuleEvaluator evaluator(config);
-    std::cout << "[CoreEngine] Watching " << target << " for access events...\n"; // fixed
-
     char buffer[BUF_SIZE];
     struct fanotify_event_metadata* metadata;
-
     CacheManager cache(cache_db);
     const uint64_t RULESET_VERSION = config.getRulesetVersion();
 
+    //[Start main loop of program]
+    std::cout << "[CoreEngine] Watching " << target << " for access events...\n"; 
     while (true) {
         ssize_t len = read(fan_fd, buffer, sizeof(buffer));
         if (len <= 0) continue;
-
         metadata = (struct fanotify_event_metadata*)buffer;
-
         while (FAN_EVENT_OK(metadata, len)) {
             if (metadata->vers != FANOTIFY_METADATA_VERSION) {
                 std::cerr << "Mismatched fanotify version!" << std::endl;
                 exit(1);
             }
 
-            // فقط روی permission events کار می‌کنیم
+            //  Only montior on open request
             if ((metadata->mask & FAN_OPEN_PERM) == 0) {
                 metadata = FAN_EVENT_NEXT(metadata, len);
                 continue;
             }
 
-            // === NEW: Self-filter (قبل از cache/evaluator)
+            //  Exclude progarm pid and logger pid from checking
             if (metadata->pid == self_pid || metadata->pid == logger_pid) {
                 std::cout << "[Access] By program itself" << std::endl ;
                 struct fanotify_response resp{};
@@ -89,24 +88,20 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 metadata = FAN_EVENT_NEXT(metadata, len);
                 continue;
             }
-
-            // حالا می‌توانیم cache/evaluator را اجرا کنیم
             struct stat st{};
             if (fstat(metadata->fd, &st) == 0) {
                 int decision = 0;
 
-                // 1) cache try
+                // [Cache checking]
                 if (cache.get(st, RULESET_VERSION, decision)) {
                     std::cout << "[cache] hit: dev=" << st.st_dev
                               << " ino=" << st.st_ino
                               << " decision=" << decision
                               << std::endl;
-
                     struct fanotify_response resp{};
                     resp.fd = metadata->fd;
                     resp.response = (decision == 0) ? FAN_ALLOW : FAN_DENY;
-
-                    // اگر block شد، برای لاگ یک پیام هم بفرستیم
+                    // Log if decision is block the access
                     if (decision != 0) {
                         char link[64]; snprintf(link, sizeof(link), "/proc/self/fd/%d", metadata->fd);
                         char realpath_buf[512];
@@ -124,21 +119,20 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                             }
                         }
                     }
-
                     (void)write(fan_fd, &resp, sizeof(resp));
                     close(metadata->fd);
                     metadata = FAN_EVENT_NEXT(metadata, len);
                     continue;
                 }
 
-                // 2) cache miss → evaluate + cache.put
+                // [Cache miss → evaluate + cache.put]
                 evaluator.handle_event(fan_fd, metadata, logger_pid, log_pipe[1], decision);
                 cache.put(st, RULESET_VERSION, decision);
                 metadata = FAN_EVENT_NEXT(metadata, len);
                 continue;
             }
 
-            // fallback: اگر fstat نشد، امن‌ترین کار: allow و رد شو
+            // Allow file if fstat failed due to priventing of deadlock
             {
                 struct fanotify_response resp{};
                 resp.fd = metadata->fd;
