@@ -62,7 +62,7 @@ bool Requirements::loadConfig(const std::string& config_path, StartupResult& out
 }
 
 bool Requirements::validateConfig(const ConfigManager& cfg, StartupResult& out) {
-    const std::string wp = cfg.getWatchPath();
+    const std::string wp = cfg.getWatchTarget();
     if (wp.empty()) {
         out.error = "[config] watch_path is empty";
         out.logs.push_back(out.error);

@@ -1,8 +1,5 @@
 {
-  "watch_path": "/home/matrix/Desktop/test_project",
-  "patterns": [
-    "SECRET",
-    "Password",
-    "token=\\w+"
-  ]
+  "watch_mode": "mount",
+  "watch_target": "/home",
+  "patterns": ["SECRET"]
 }

@@ -8,44 +8,32 @@
 
 class ConfigManager {
 public:
-    // Load watch_path + patterns from ./config.json (or given path)
-    bool loadFromFile(const std::string& path);
+    explicit ConfigManager() = default;
+    bool loadFromFile(const std::string& config_path);
 
-    // Evaluate a text against current patterns (binary policy)
+    const std::string& getWatchMode()   const { return watch_mode_; }
+    const std::string& getWatchTarget() const { return watch_target_; }
+    const std::vector<std::string>& getPatternStrings() const { return pattern_strings_; }
+
     bool matches(const std::string& text) const;
-
-    const std::string& getWatchPath() const;
     size_t patternCount() const;
 
-    // === NEW: ruleset versioning ===
-    // Compute canonical hash of rules and bump version in DB if changed.
-    // Returns true on success; fills ruleset_version_ and ruleset_hash_.
+    std::string canonicalRulesJson() const;
+    static std::string hashCanonical(const std::string& data);
     bool initRulesetVersion(sqlite3* db);
 
-    // Accessors
+    // NEW:
     uint64_t getRulesetVersion() const { return ruleset_version_; }
-    const std::string& getRulesetHash() const { return ruleset_hash_; }
-
-    // Optional: expose raw pattern strings (for logging/debug)
-    const std::vector<std::string>& rawPatterns() const { return pattern_strings_; }
 
 private:
-    // Canonical serialization independent of order (patterns sorted)
-    std::string canonicalRulesJson() const;
-
-    // Hash helper: returns lowercase hex (sha256 if available; else FNV-1a 64 → hex)
-    static std::string hashCanonical(const std::string& data);
-
-private:
-    std::string watch_path;
+    std::string watch_mode_;    // "path" | "mount"
+    std::string watch_target_;
     std::vector<std::regex> patterns;
-
-    // keep original strings for canonicalization
     std::vector<std::string> pattern_strings_;
 
-    // versioning
-    uint64_t    ruleset_version_ = 0;
+    uint64_t ruleset_version_ = 0;
     std::string ruleset_hash_;
+    // removed: nlohmann::json config_json;
 };
 
 #endif // REGEX_CONFIG_MANAGER_HPP

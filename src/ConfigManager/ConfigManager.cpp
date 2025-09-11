@@ -27,12 +27,27 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
 
     json j;
     file >> j;
+    // removed: config_json = j;
 
-    // watch_path
-    if (!j.contains("watch_path") || !j["watch_path"].is_string()) return false;
-    watch_path = j["watch_path"].get<std::string>();
+    // --- watch_mode ---
+    if (!j.contains("watch_mode") || !j["watch_mode"].is_string()) {
+        std::cerr << "[ConfigManager] Missing or invalid watch_mode\n";
+        return false;
+    }
+    watch_mode_ = toLower(j["watch_mode"].get<std::string>());
+    if (watch_mode_ != "path" && watch_mode_ != "mount") {
+        std::cerr << "[ConfigManager] Invalid watch_mode: " << watch_mode_ << "\n";
+        return false;
+    }
 
+    // --- watch_target ---
+    if (!j.contains("watch_target") || !j["watch_target"].is_string()) {
+        std::cerr << "[ConfigManager] Missing or invalid watch_target\n";
+        return false;
+    }
+    watch_target_ = j["watch_target"].get<std::string>();
 
+    // --- patterns ---
     if (!j.contains("patterns") || !j["patterns"].is_array()) return false;
 
     patterns.clear();
@@ -42,9 +57,7 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
         if (!p.is_string()) continue;
         const std::string pat = p.get<std::string>();
         pattern_strings_.push_back(pat);
-
         try {
-            // case-insensitive عمومی
             patterns.emplace_back(pat, std::regex::ECMAScript | std::regex::icase);
         } catch (const std::regex_error&) {
             std::cerr << "[ConfigManager] Invalid regex: " << pat << "\n";
@@ -62,7 +75,6 @@ bool ConfigManager::matches(const std::string& text) const {
     return false;
 }
 
-const std::string& ConfigManager::getWatchPath() const { return watch_path; }
 size_t ConfigManager::patternCount() const { return patterns.size(); }
 
 // --- canonicalization: JSON با کلیدهای ثابت + الگوهای مرتب‌شده ---
@@ -73,7 +85,6 @@ std::string ConfigManager::canonicalRulesJson() const {
 
     // JSON کانُنیکال: فقط چیزهایی که روی policy اثر دارند
     json c;
-    c["watch_path"] = watch_path;   // اگر نمی‌خوای روی نسخه اثر بذاره، این خط رو حذف کن
     c["patterns"]   = sorted;
 
     // dump بدون space (ثابت)
