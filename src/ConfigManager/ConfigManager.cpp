@@ -21,51 +21,63 @@ static inline std::string toLower(std::string s) {
     return s;
 }
 
+#include "ConfigManager.hpp"
+#include <fstream>
+#include <algorithm>
+#include <cctype>
+#include <iostream>
+#include <nlohmann/json.hpp>
+using nlohmann::json;
+
+static inline std::string toLower(std::string s) {
+    for (char& c : s) c = (char)std::tolower((unsigned char)c);
+    return s;
+}
+
 bool ConfigManager::loadFromFile(const std::string& config_path) {
     std::ifstream file(config_path);
     if (!file.is_open()) return false;
 
     json j;
-    file >> j;
-    // removed: config_json = j;
-
-    // --- watch_mode ---
-    if (!j.contains("watch_mode") || !j["watch_mode"].is_string()) {
-        std::cerr << "[ConfigManager] Missing or invalid watch_mode\n";
-        return false;
+    try {
+        file >> j;
+    } catch (...) {
+        return false; 
     }
-    watch_mode_ = toLower(j["watch_mode"].get<std::string>());
-    if (watch_mode_ != "path" && watch_mode_ != "mount") {
-        std::cerr << "[ConfigManager] Invalid watch_mode: " << watch_mode_ << "\n";
-        return false;
-    }
-
-    // --- watch_target ---
-    if (!j.contains("watch_target") || !j["watch_target"].is_string()) {
-        std::cerr << "[ConfigManager] Missing or invalid watch_target\n";
-        return false;
-    }
-    watch_target_ = j["watch_target"].get<std::string>();
-
-    // --- patterns ---
-    if (!j.contains("patterns") || !j["patterns"].is_array()) return false;
-
     patterns.clear();
     pattern_strings_.clear();
 
-    for (const auto& p : j["patterns"]) {
-        if (!p.is_string()) continue;
-        const std::string pat = p.get<std::string>();
+    if (j.contains("watch_mode") && j["watch_mode"].is_string()) {
+        watch_mode_ = toLower(j["watch_mode"].get<std::string>());
+    } else {
+        watch_mode_.clear();
+    }
+
+    if (j.contains("watch_target") && j["watch_target"].is_string()) {
+        watch_target_ = j["watch_target"].get<std::string>();
+    } else {
+        watch_target_.clear();
+    }
+
+    auto add_pat = [&](const std::string& pat) {
         pattern_strings_.push_back(pat);
         try {
             patterns.emplace_back(pat, std::regex::ECMAScript | std::regex::icase);
-        } catch (const std::regex_error&) {
-            std::cerr << "[ConfigManager] Invalid regex: " << pat << "\n";
+        } catch (...) { 
+        }
+    };
+
+    if (j.contains("patterns")) {
+        if (j["patterns"].is_array()) {
+            for (const auto& p : j["patterns"]) if (p.is_string()) add_pat(p.get<std::string>());
+        } else if (j["patterns"].is_string()) {
+            add_pat(j["patterns"].get<std::string>());
         }
     }
 
     return true;
 }
+
 
 
 bool ConfigManager::matches(const std::string& text) const {

@@ -6,6 +6,8 @@
 #include <cstring>
 #include <ctime>
 
+
+// Cerate tables query
 static const char* kSchemaSQL = R"SQL(
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
@@ -17,7 +19,7 @@ CREATE TABLE IF NOT EXISTS cache_entries (
   mtime_ns        INTEGER NOT NULL,
   size            INTEGER NOT NULL,
   ruleset_version INTEGER NOT NULL,
-  decision        INTEGER NOT NULL,     -- 0=ALLOW, 1=BLOCK
+  decision        INTEGER NOT NULL,     
   updated_at      INTEGER NOT NULL,
   PRIMARY KEY (dev, ino)
 );
@@ -34,6 +36,7 @@ INSERT OR IGNORE INTO meta(key, value) VALUES ('ruleset_version','1');
 INSERT OR IGNORE INTO meta(key, value) VALUES ('ruleset_hash','');
 )SQL";
 
+// Config log
 void Requirements::fileLog(const std::string& msg) {
     int fd = ::open("logs/config.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd == -1) return;
@@ -46,11 +49,13 @@ void Requirements::fileLog(const std::string& msg) {
     ::close(fd);
 }
 
+// Create directory if it is not exist
 void Requirements::ensureDir(const char* path, StartupResult& out) {
     ::mkdir(path, 0755);
     out.logs.push_back(std::string("[ensureDir] ok: ") + path);
 }
 
+// Parse the config field
 bool Requirements::loadConfig(const std::string& config_path, StartupResult& out) {
     if (!out.config.loadFromFile(config_path)) {
         out.error = "[config] failed to load " + config_path;
@@ -61,37 +66,51 @@ bool Requirements::loadConfig(const std::string& config_path, StartupResult& out
     return true;
 }
 
+// Validate config file and check crusial fields correctness
 bool Requirements::validateConfig(const ConfigManager& cfg, StartupResult& out) {
-    const std::string wp = cfg.getWatchTarget();
-    if (wp.empty()) {
-        out.error = "[config] watch_path is empty";
+    std::string mode = cfg.getWatchMode();
+    if (mode != "path" && mode != "mount") {
+        out.logs.push_back("[config] watch_mode missing/invalid -> defaulting to 'path'");
+        mode = "path";
+    }
+
+    const std::string target = cfg.getWatchTarget();
+    if (target.empty()) {
+        out.error = "[config] watch_target is empty";
         out.logs.push_back(out.error);
         return false;
     }
+
     struct stat st{};
-    if (::stat(wp.c_str(), &st) == -1) {
-        out.error = "[config] path not found: " + wp + " (" + std::string(::strerror(errno)) + ")";
+    if (::stat(target.c_str(), &st) == -1) {
+        out.error = "[config] target not found: " + target + " (" + std::string(::strerror(errno)) + ")";
         out.logs.push_back(out.error);
         return false;
     }
     if (!S_ISDIR(st.st_mode)) {
-        out.error = "[config] path is not a directory: " + wp;
+        out.error = "[config] target is not a directory: " + target;
         out.logs.push_back(out.error);
         return false;
     }
-    if (::access(wp.c_str(), R_OK | X_OK) != 0) {
-        out.error = "[config] insufficient access: " + wp + " (" + std::string(::strerror(errno)) + ")";
+    if (::access(target.c_str(), R_OK | X_OK) != 0) {
+        out.error = "[config] insufficient access on target: " + target + " (" + std::string(::strerror(errno)) + ")";
         out.logs.push_back(out.error);
         return false;
     }
+
     if (cfg.patternCount() == 0) {
         out.error = "[config] no valid patterns loaded";
         out.logs.push_back(out.error);
         return false;
     }
+
+    out.logs.push_back("[config] watch_mode: " + mode);
+    out.logs.push_back("[config] watch_target: " + target);
+    out.logs.push_back("[config] patterns loaded: " + std::to_string(cfg.patternCount()));
     out.logs.push_back("[config] validation ok");
     return true;
 }
+
 
 bool Requirements::initCacheDb(const std::string& db_path, StartupResult& out) {
     sqlite3* raw = nullptr;

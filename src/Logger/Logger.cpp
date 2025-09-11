@@ -7,6 +7,7 @@
 
 void logger_loop(int pipe_read_fd) {
     char buf[1024];
+    // [Main loop of logger thread]
     while (true) {
         ssize_t len = read(pipe_read_fd, buf, sizeof(buf) - 1);
         if (len > 0) {
