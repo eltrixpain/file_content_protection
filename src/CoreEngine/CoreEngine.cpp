@@ -80,7 +80,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
 
             // === NEW: Self-filter (قبل از cache/evaluator)
             if (metadata->pid == self_pid || metadata->pid == logger_pid) {
-                std::cout << "self" << std::endl ;
+                std::cout << "[Access] By program itself" << std::endl ;
                 struct fanotify_response resp{};
                 resp.fd = metadata->fd;
                 resp.response = FAN_ALLOW;
