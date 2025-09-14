@@ -37,7 +37,7 @@ void RuleEvaluator::handle_event(int fan_fd,
     ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
     if (n >= 0) {
         path_buf[n] = '\0';
-        std::cout << "path  : " << path_buf << "  access by " << metadata->pid << "\n";
+        // std::cout << "path  : " << path_buf << "  access by " << metadata->pid << "\n";
     } else {
         strncpy(path_buf, "[unknown]", sizeof(path_buf));
         path_buf[sizeof(path_buf)-1] = '\0';

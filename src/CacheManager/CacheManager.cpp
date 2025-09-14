@@ -47,13 +47,13 @@ bool CacheManager::get(const struct stat& st, uint64_t ruleset_version, int& dec
 void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int decision) {
     if (!db_) return;
 
-    std::cout << "[cache] put: dev=" << st.st_dev
-              << " ino=" << st.st_ino
-              << " size=" << st.st_size
-              << " mtime=" << st.st_mtim.tv_sec
-              << " ver=" << ruleset_version
-              << " decision=" << decision
-              << std::endl;
+    // std::cout << "[cache] put: dev=" << st.st_dev
+    //           << " ino=" << st.st_ino
+    //           << " size=" << st.st_size
+    //           << " mtime=" << st.st_mtim.tv_sec
+    //           << " ver=" << ruleset_version
+    //           << " decision=" << decision
+    //           << std::endl;
 
     const char* sql =
         "INSERT OR REPLACE INTO cache_entries "

@@ -12,9 +12,33 @@
 #include <sys/stat.h>
 #include <cstring>
 #include <cstdlib>
-#include <unistd.h>     
+#include <unistd.h>
+#include <chrono>
+
 
 #define BUF_SIZE 4096
+
+#include <chrono>
+using SteadyClock = std::chrono::steady_clock;
+
+
+static uint64_t decisions = 0;
+static uint64_t hits = 0;
+static uint64_t total_us = 0;        // مجموع میکروثانیه کل تصمیم‌ها
+static uint64_t total_hit_us = 0;    // اختیاری: میانگین مخصوص hit
+static uint64_t total_miss_us = 0;   // اختیاری: میانگین مخصوص miss
+
+auto report_every = [](uint64_t n) {
+    if (decisions % n == 0 && decisions > 0) {
+        double avg_ms = (double)total_us / decisions / 1000.0;
+        double hit_rate = (double)hits * 100.0 / (double)decisions;
+        std::cout << "[metrics] decisions=" << decisions
+                  << " hit_rate=" << hit_rate << "% "
+                  << "avg_decision=" << avg_ms << " ms"
+                  << std::endl;
+    }
+};
+
 
 void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
     // [Fanotify registration]
@@ -79,7 +103,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
 
             //  Exclude progarm pid and logger pid from checking
             if (metadata->pid == self_pid || metadata->pid == logger_pid) {
-                std::cout << "[Access] By program itself" << std::endl ;
+                // std::cout << "[Access] By program itself" << std::endl ;
                 struct fanotify_response resp{};
                 resp.fd = metadata->fd;
                 resp.response = FAN_ALLOW;
@@ -88,52 +112,50 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 metadata = FAN_EVENT_NEXT(metadata, len);
                 continue;
             }
+            auto t0 = SteadyClock::now();
             struct stat st{};
             if (fstat(metadata->fd, &st) == 0) {
                 int decision = 0;
 
-                // [Cache checking]
+                //Cache path
                 if (cache.get(st, RULESET_VERSION, decision)) {
-                    std::cout << "[cache] hit: dev=" << st.st_dev
-                              << " ino=" << st.st_ino
-                              << " decision=" << decision
-                              << std::endl;
+                    hits++;  // برای Hit Rate
+                    // پاسخ دادن...
                     struct fanotify_response resp{};
                     resp.fd = metadata->fd;
                     resp.response = (decision == 0) ? FAN_ALLOW : FAN_DENY;
-                    // Log if decision is block the access
-                    if (decision != 0) {
-                        char link[64]; snprintf(link, sizeof(link), "/proc/self/fd/%d", metadata->fd);
-                        char realpath_buf[512];
-                        ssize_t r = readlink(link, realpath_buf, sizeof(realpath_buf) - 1);
-                        if (r > 0) {
-                            realpath_buf[r] = '\0';
-                            std::time_t now = std::time(nullptr);
-                            char* dt = std::ctime(&now);
-                            if (dt) {
-                                dt[std::strlen(dt) - 1] = '\0';
-                                std::string log_line = "[" + std::string(dt) + "] BLOCKED: " +
-                                                       realpath_buf + " for PID [" +
-                                                       std::to_string(metadata->pid) + "]\n";
-                                (void)write(log_pipe[1], log_line.c_str(), log_line.size());
-                            }
-                        }
-                    }
                     (void)write(fan_fd, &resp, sizeof(resp));
+                    // زمان را جمع بزن:
+                    auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
+                    total_us += dt_us;
+                    total_hit_us += dt_us; // اختیاری
+                    decisions++;
+                    report_every(1000);
+
                     close(metadata->fd);
                     metadata = FAN_EVENT_NEXT(metadata, len);
                     continue;
                 }
 
-                // [Cache miss → evaluate + cache.put]
+                // Miss path: evaluate + put
                 evaluator.handle_event(fan_fd, metadata, logger_pid, log_pipe[1], decision);
                 cache.put(st, RULESET_VERSION, decision);
+
+                // پایان اندازه‌گیری برای miss:
+                auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
+                total_us += dt_us;
+                total_miss_us += dt_us; // اختیاری
+                decisions++;
+                report_every(100);
+
                 metadata = FAN_EVENT_NEXT(metadata, len);
                 continue;
             }
 
+
             // Allow file if fstat failed due to priventing of deadlock
             {
+                std::cout << "whyyyyyyyyy!!!!!!" << std::endl;
                 struct fanotify_response resp{};
                 resp.fd = metadata->fd;
                 resp.response = FAN_ALLOW;
