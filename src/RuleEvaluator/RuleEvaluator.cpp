@@ -14,7 +14,6 @@ RuleEvaluator::RuleEvaluator(const ConfigManager& config) : config(config) {}
 
 void RuleEvaluator::handle_event(int fan_fd,
                                  const struct fanotify_event_metadata* metadata,
-                                 pid_t logger_pid,
                                  int log_pipe_fd,
                                  int& out_decision) {
     out_decision = 0; // 0 = ALLOW

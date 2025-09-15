@@ -138,7 +138,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 }
 
                 // Miss path: evaluate + put
-                evaluator.handle_event(fan_fd, metadata, logger_pid, log_pipe[1], decision);
+                evaluator.handle_event(fan_fd, metadata, log_pipe[1], decision);
                 cache.put(st, RULESET_VERSION, decision);
 
                 // پایان اندازه‌گیری برای miss:

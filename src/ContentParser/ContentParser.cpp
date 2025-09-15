@@ -1,28 +1,38 @@
 #include "ContentParser.hpp"
-#include <fstream>
-#include <iostream>
+#include <memory>
 #include <poppler/cpp/poppler-document.h>
 #include <poppler/cpp/poppler-page.h>
-#include <memory>
+#include <ctime>
+#include <unistd.h>
+#include <cstring>
 
+static inline void log_poppler_error(const char* msg, int log_pipe_fd) {
+    std::time_t now = std::time(nullptr);
+    char* dt = std::ctime(&now);
+    if (dt) dt[strlen(dt)-1] = '\0'; // remove \n
 
+    std::string line = "[" + std::string(dt) + "] [ContentParser] poppler error: "
+                     + msg + "\n";
+    (void)write(log_pipe_fd, line.c_str(), line.size());
+}
 
-std::string ContentParser::detect_type(const std::string& file_path,
+std::string ContentParser::detect_type(const std::string& /*file_path*/,
                                        const std::string& raw_content) {
     if (raw_content.rfind("%PDF-", 0) == 0) return "pdf";
     return "text";
 }
 
 std::string ContentParser::extract_text(const std::string& type,
-                                        const std::string& raw_content)
-{
+                                        const std::string& raw_content,
+                                        int log_pipe_fd) {
     if (type == "pdf") {
-        return extract_text_from_pdf_data(raw_content);
+        return extract_text_from_pdf_data(raw_content, log_pipe_fd);
     }
     return raw_content;
 }
 
-std::string ContentParser::extract_text_from_pdf_data(const std::string& data) {
+std::string ContentParser::extract_text_from_pdf_data(const std::string& data,
+                                                      int log_pipe_fd) {
     try {
         poppler::byte_array ba;
         ba.assign(data.begin(), data.end());
@@ -31,26 +41,33 @@ std::string ContentParser::extract_text_from_pdf_data(const std::string& data) {
             poppler::document::load_from_data(&ba)
         );
         if (!doc) {
-            return data;  // fallback → raw data
+            log_poppler_error("load_from_data failed", log_pipe_fd);
+            return data;
         }
 
         std::string text;
-        for (int i = 0; i < doc->pages(); ++i) {
+        const int pages = doc->pages();
+        for (int i = 0; i < pages; ++i) {
             auto page = doc->create_page(i);
-            if (page) {
-                auto ustr = page->text().to_utf8();
-                text.append(ustr.data(), ustr.size());
+            if (!page) continue;
+
+            const std::string s = page->text().to_utf8();
+            if (!s.empty()) {
+                text += s;
                 text.push_back('\n');
             }
         }
-        return text.empty() ? data : text; // fallback اگر متن خالی شد
+        if (text.empty()) {
+            log_poppler_error("empty extraction result", log_pipe_fd);
+            return data;
+        }
+        return text;
     } catch (const std::exception& e) {
-        std::cerr << "[ContentParser] poppler error: " << e.what() << std::endl;
-        return data; // fallback
+        log_poppler_error(e.what(), log_pipe_fd);
+        return data;
     } catch (...) {
-        std::cerr << "[ContentParser] unknown poppler error" << std::endl;
-        return data; // fallback
+        log_poppler_error("unknown exception", log_pipe_fd);
+        return data;
     }
 }
-
-
+    

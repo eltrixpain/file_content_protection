@@ -12,7 +12,6 @@ public:
     // main handler: takes fanotify event and returns whether to allow or deny
 void handle_event(int fan_fd,
                   const struct fanotify_event_metadata* metadata,
-                  pid_t logger_pid,
                   int log_pipe_fd,
                   int& out_decision);
 private:
