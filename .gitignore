@@ -22,6 +22,7 @@ idea/
 
 # backup files
 *.bak
+.vscode/
 
 # compiled python (if any utils/scripts)
 __pycache__/

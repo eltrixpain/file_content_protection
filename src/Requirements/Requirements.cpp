@@ -102,7 +102,7 @@ bool Requirements::validateConfig(const ConfigManager& cfg, StartupResult& out) 
         return false;
     }
     const uint64_t max_bytes = cfg.max_cache_bytes();
-    const uint64_t MIN_BYTES = 5ULL * 1024ULL;                              // 5KB
+    const uint64_t MIN_BYTES = 10 * 1024ULL * 1024ULL;                              // 5KB
     const uint64_t MAX_BYTES = 1ULL * 1024ULL * 1024ULL * 1024ULL; // 1GsB
 
     if (max_bytes == 0) {
@@ -144,7 +144,7 @@ bool Requirements::initCacheDb(const std::string& db_path, StartupResult& out) {
     sqlite3_exec(raw, "PRAGMA synchronous=NORMAL;", nullptr, nullptr, nullptr);
     sqlite3_exec(raw, "PRAGMA foreign_keys=ON;", nullptr, nullptr, nullptr);
     sqlite3_wal_autocheckpoint(raw, 512);
-    
+
 
     out.db.reset(raw); // حالا بسپار به unique_ptr
 

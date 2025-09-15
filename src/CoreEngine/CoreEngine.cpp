@@ -41,9 +41,6 @@ auto report_every = [](uint64_t n) {
 
 
 void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
-    std::cout << "cache_max_size = "
-              << config.max_cache_bytes()
-              << " bytes" << std::endl;
     // [Fanotify registration]
     // get data for register fanotify from config file
     const std::string mode   = config.getWatchMode();
