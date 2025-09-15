@@ -6,7 +6,9 @@
 #include <memory>
 
 
-std::string ContentParser::detect_type(const std::string& file_path, const std::string& raw_content) {
+
+std::string ContentParser::detect_type(const std::string& file_path,
+                                       const std::string& raw_content) {
     if (raw_content.rfind("%PDF-", 0) == 0) return "pdf";
     return "text";
 }
@@ -20,24 +22,35 @@ std::string ContentParser::extract_text(const std::string& type,
     return raw_content;
 }
 
-
-// PDF parser
 std::string ContentParser::extract_text_from_pdf_data(const std::string& data) {
-    poppler::byte_array ba;
-    ba.assign(data.begin(), data.end());  
+    try {
+        poppler::byte_array ba;
+        ba.assign(data.begin(), data.end());
 
-    poppler::document* raw = poppler::document::load_from_data(&ba);  
-    if (!raw) return "";
-
-    std::shared_ptr<poppler::document> doc(raw);
-
-    std::string text;
-    for (int i = 0; i < doc->pages(); ++i) {
-        auto page = doc->create_page(i);
-        if (page) {
-            text += std::string(page->text().to_utf8().data());
-            text += "\n";
+        std::unique_ptr<poppler::document> doc(
+            poppler::document::load_from_data(&ba)
+        );
+        if (!doc) {
+            return data;  // fallback → raw data
         }
+
+        std::string text;
+        for (int i = 0; i < doc->pages(); ++i) {
+            auto page = doc->create_page(i);
+            if (page) {
+                auto ustr = page->text().to_utf8();
+                text.append(ustr.data(), ustr.size());
+                text.push_back('\n');
+            }
+        }
+        return text.empty() ? data : text; // fallback اگر متن خالی شد
+    } catch (const std::exception& e) {
+        std::cerr << "[ContentParser] poppler error: " << e.what() << std::endl;
+        return data; // fallback
+    } catch (...) {
+        std::cerr << "[ContentParser] unknown poppler error" << std::endl;
+        return data; // fallback
     }
-    return text;
 }
+
+

@@ -1,5 +1,5 @@
 {
   "watch_mode": "mount",
   "watch_target": "/home",
-  "patterns": ["password\\s*=\\s*.*"]
+  "patterns": ["password\\s*=\\s*.*", "asndifnasidnfiasndfinnsaid"]
 }
