@@ -24,7 +24,8 @@ void RuleEvaluator::handle_event(int fan_fd,
             .fd       = metadata->fd,
             .response = allow ? (__u32)FAN_ALLOW : (__u32)FAN_DENY
         };
-        (void)write(fan_fd, &resp, sizeof(resp)); // ignore retval
+        ssize_t _wr = ::write(fan_fd, &resp, sizeof(resp)); // ignore retval
+        (void)_wr;
         close(metadata->fd);
     };
 
@@ -65,7 +66,7 @@ void RuleEvaluator::handle_event(int fan_fd,
     // تشخیص نوع و استخراج متن
     std::string header(buffer.data(), std::min<size_t>(5, buffer.size()));
     std::string type = ContentParser::detect_type(path_buf, header);
-    std::string extracted = ContentParser::extract_text(type, std::string(buffer.data(), buffer.size()));
+    std::string extracted = ContentParser::extract_text(type,std::string(buffer.data(), buffer.size()),log_pipe_fd);
 
     // اعمال رول‌ها
     if (config.matches(extracted)) {
@@ -77,7 +78,8 @@ void RuleEvaluator::handle_event(int fan_fd,
             date_time[strlen(date_time) - 1] = '\0'; // strip '\n'
             std::string log_line = "[" + std::string(date_time) + "] BLOCKED: " +
                                    path_buf + " for PID [" + std::to_string(metadata->pid) + "]\n";
-            (void)write(log_pipe_fd, log_line.c_str(), log_line.size());
+            ssize_t _wr = ::write(log_pipe_fd, log_line.c_str(), log_line.size());
+            (void)_wr;
         }
 
         respond(false); // DENY

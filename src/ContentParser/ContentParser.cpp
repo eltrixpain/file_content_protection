@@ -13,7 +13,8 @@ static inline void log_poppler_error(const char* msg, int log_pipe_fd) {
 
     std::string line = "[" + std::string(dt) + "] [ContentParser] poppler error: "
                      + msg + "\n";
-    (void)write(log_pipe_fd, line.c_str(), line.size());
+    ssize_t _wr = ::write(log_pipe_fd, line.c_str(), line.size());
+    (void)_wr;
 }
 
 std::string ContentParser::detect_type(const std::string& /*file_path*/,
@@ -51,11 +52,11 @@ std::string ContentParser::extract_text_from_pdf_data(const std::string& data,
             auto page = doc->create_page(i);
             if (!page) continue;
 
-            const std::string s = page->text().to_utf8();
-            if (!s.empty()) {
-                text += s;
-                text.push_back('\n');
-            }
+        auto u = page->text().to_utf8();     // u: poppler::byte_array = std::vector<char>
+        if (!u.empty()) {
+            text.append(u.begin(), u.end());
+            text.push_back('\n');
+        }
         }
         if (text.empty()) {
             log_poppler_error("empty extraction result", log_pipe_fd);
@@ -70,4 +71,3 @@ std::string ContentParser::extract_text_from_pdf_data(const std::string& data,
         return data;
     }
 }
-    

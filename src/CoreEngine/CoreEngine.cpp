@@ -107,7 +107,8 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 struct fanotify_response resp{};
                 resp.fd = metadata->fd;
                 resp.response = FAN_ALLOW;
-                (void)write(fan_fd, &resp, sizeof(resp));
+                ssize_t _wr = ::write(fan_fd, &resp, sizeof(resp));
+                (void)_wr;
                 close(metadata->fd);
                 metadata = FAN_EVENT_NEXT(metadata, len);
                 continue;
@@ -124,7 +125,8 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                     struct fanotify_response resp{};
                     resp.fd = metadata->fd;
                     resp.response = (decision == 0) ? FAN_ALLOW : FAN_DENY;
-                    (void)write(fan_fd, &resp, sizeof(resp));
+                    ssize_t _wr = ::write(fan_fd, &resp, sizeof(resp));
+                    (void)_wr;
                     // زمان را جمع بزن:
                     auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                     total_us += dt_us;
@@ -159,7 +161,8 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 struct fanotify_response resp{};
                 resp.fd = metadata->fd;
                 resp.response = FAN_ALLOW;
-                (void)write(fan_fd, &resp, sizeof(resp));
+                ssize_t _wr = ::write(fan_fd, &resp, sizeof(resp));
+                (void)_wr;
                 close(metadata->fd);
                 metadata = FAN_EVENT_NEXT(metadata, len);
             }

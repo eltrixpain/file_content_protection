@@ -45,7 +45,8 @@ void Requirements::fileLog(const std::string& msg) {
     ctime_r(&now, buf);
     buf[std::strlen(buf) - 1] = '\0';
     std::string line = "[" + std::string(buf) + "] " + msg + "\n";
-    ::write(fd, line.c_str(), line.size());
+    ssize_t _wr = ::write(fd, line.c_str(), line.size());
+    (void)_wr;  
     ::close(fd);
 }
 
