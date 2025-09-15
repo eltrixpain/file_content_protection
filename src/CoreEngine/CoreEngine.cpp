@@ -162,7 +162,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                     auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                     total_us += dt_us;
                     decisions++;
-                    report_every(100);
+                    report_every(1000);
                     close(metadata->fd);
                     metadata = FAN_EVENT_NEXT(metadata, len);
                     continue;
@@ -170,13 +170,13 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
 
                 // Miss path: evaluate + put
                 evaluator.handle_event(fan_fd, metadata, log_pipe[1], decision);
-                cache.put(st, RULESET_VERSION, decision);
+                cache.put(st, RULESET_VERSION, decision,config.max_cache_bytes());
 
                 // پایان اندازه‌گیری برای miss:
                 auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                 total_us += dt_us;
                 decisions++;
-                report_every(100);
+                report_every(1000);
 
                 metadata = FAN_EVENT_NEXT(metadata, len);
                 continue;

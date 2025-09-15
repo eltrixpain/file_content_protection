@@ -9,17 +9,13 @@
 
 // Cerate tables query
 static const char* kSchemaSQL = R"SQL(
-PRAGMA journal_mode=WAL;
-PRAGMA synchronous=NORMAL;
-PRAGMA foreign_keys=ON;
-
 CREATE TABLE IF NOT EXISTS cache_entries (
   dev             INTEGER NOT NULL,
   ino             INTEGER NOT NULL,
   mtime_ns        INTEGER NOT NULL,
   size            INTEGER NOT NULL,
   ruleset_version INTEGER NOT NULL,
-  decision        INTEGER NOT NULL,     
+  decision        INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL,
   PRIMARY KEY (dev, ino)
 );
@@ -35,6 +31,7 @@ CREATE TABLE IF NOT EXISTS meta (
 INSERT OR IGNORE INTO meta(key, value) VALUES ('ruleset_version','1');
 INSERT OR IGNORE INTO meta(key, value) VALUES ('ruleset_hash','');
 )SQL";
+
 
 // Config log
 void Requirements::fileLog(const std::string& msg) {
@@ -142,19 +139,27 @@ bool Requirements::initCacheDb(const std::string& db_path, StartupResult& out) {
         if (raw) sqlite3_close(raw);
         return false;
     }
-    out.db.reset(raw);
+   sqlite3_busy_timeout(raw, 5000);
+    sqlite3_exec(raw, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
+    sqlite3_exec(raw, "PRAGMA synchronous=NORMAL;", nullptr, nullptr, nullptr);
+    sqlite3_exec(raw, "PRAGMA foreign_keys=ON;", nullptr, nullptr, nullptr);
+    sqlite3_wal_autocheckpoint(raw, 512);
+    
+
+    out.db.reset(raw); // حالا بسپار به unique_ptr
 
     char* err = nullptr;
-    rc = sqlite3_exec(out.db.get(), kSchemaSQL, nullptr, nullptr, &err);
+    rc = sqlite3_exec(out.db.get(), kSchemaSQL /* بدون PRAGMA ها */, nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
         out.error = std::string("[cache] schema exec failed: ") + (err ? err : "");
         out.logs.push_back(out.error);
         if (err) sqlite3_free(err);
         return false;
     }
-    out.logs.push_back("[cache] schema ok (PRAGMA + tables/indexes)");
+    out.logs.push_back("[cache] schema ok (tables/indexes)");
     return true;
 }
+
 
 // check the rule set version
 bool Requirements::initRulesetVersion(StartupResult& out) {

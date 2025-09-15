@@ -2,6 +2,35 @@
 #include "CacheManager.hpp"
 #include <ctime>
 #include <iostream>
+#include <sys/stat.h>
+#include <string>
+
+// --- helper: file size ---
+static inline uint64_t file_size_if_exists(const std::string& p) {
+    struct stat st{};
+    if (::stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+        return static_cast<uint64_t>(st.st_size);
+    }
+    return 0ULL;
+}
+
+// --- helper: total sqlite size with WAL ---
+static inline uint64_t sqlite_total_size(const std::string& db_path) {
+    return file_size_if_exists(db_path)
+         + file_size_if_exists(db_path + "-wal"); // shm ناچیزه، می‌تونی حساب نکنی
+}
+
+// --- check before insert ---
+bool check_cache_capacity(const std::string& db_path, uint64_t max_bytes) {
+    uint64_t cur = sqlite_total_size(db_path);
+    if (cur >= max_bytes) {
+        // // Just for debugh and logging
+        // std::cerr << "[cache] size limit exceeded: "
+        //           << cur << " >= " << max_bytes << " bytes\n";
+        return false; 
+    }
+    return true;
+}
 
 
 // check cache table result ---> hit or miss
@@ -30,7 +59,7 @@ bool CacheManager::get(const struct stat& st, uint64_t ruleset_version, int& dec
 
         const long long cur_mtime_ns =
             static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec;
-    
+
         if (row_ruleset_ver == static_cast<long long>(ruleset_version) &&
             row_mtime_ns    == cur_mtime_ns &&
             row_size        == static_cast<long long>(st.st_size)) {
@@ -44,7 +73,7 @@ bool CacheManager::get(const struct stat& st, uint64_t ruleset_version, int& dec
 }
 
 // put new record into the hash table
-void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int decision) {
+void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int decision ,uint64_t max_bytes) {
     if (!db_) return;
 
     // // Just for debug and logging
@@ -55,7 +84,9 @@ void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int deci
     //           << " ver=" << ruleset_version
     //           << " decision=" << decision
     //           << std::endl;
-
+    if (!check_cache_capacity("cache/cache.sqlite",max_bytes)){
+        return ;
+    }
     const char* sql =
         "INSERT OR REPLACE INTO cache_entries "
         "(dev, ino, mtime_ns, size, ruleset_version, decision, updated_at) "

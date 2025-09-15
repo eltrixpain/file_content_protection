@@ -219,11 +219,11 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
         return false;
     }
 
-    // 1) compute current canonical hash
+    // 1 compute current canonical hash
     const std::string canonical = canonicalRulesJson();
     const std::string cur_hash  = hashCanonical(canonical);
 
-    // 2) read old hash & version
+    // 2 read old hash & version
     std::string last_hash;
     uint64_t last_ver = 0;
 
@@ -250,7 +250,7 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
 
     if (last_ver == 0) last_ver = 1; // safety seed
 
-    // 3) compare & update (transactional)
+    // 3 compare & update (transactional)
     if (last_hash.empty()) {
         // first time
         sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
