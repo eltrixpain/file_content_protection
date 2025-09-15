@@ -1,0 +1,29 @@
+# build outputs
+fileguard
+*.o
+*.obj
+*.exe
+
+# cache database files
+cache/cache.sqlite
+cache/cache.sqlite-shm
+cache/cache.sqlite-wal
+
+# logs
+logs/
+
+idea/
+
+# system/editor cruft
+*.swp
+*.swo
+*~
+.DS_Store
+
+# backup files
+*.bak
+
+# compiled python (if any utils/scripts)
+__pycache__/
+*.pyc
+

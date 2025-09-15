@@ -1,5 +1,5 @@
 {
-  "watch_mode": "mount",
-  "watch_target": "/home",
+  "watch_mode": "path",
+  "watch_target": "/home/remnux/Desktop/test_folder/",
   "patterns": ["password\\s*=\\s*.*", "asndifnasidnfiasndfinnsaid"]
 }

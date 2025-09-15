@@ -14,6 +14,8 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <chrono>
+#include <fstream>
+
 
 
 #define BUF_SIZE 4096
@@ -118,7 +120,32 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
             if (fstat(metadata->fd, &st) == 0) {
                 int decision = 0;
 
+                pid_t pid = metadata->pid;
+                char proc_comm[256] = {0};
+
+                std::string comm_path = "/proc/" + std::to_string(pid) + "/comm";
+                std::ifstream comm_file(comm_path);
+                if (comm_file.is_open()) {
+                    comm_file.getline(proc_comm, sizeof(proc_comm));
+                    comm_file.close();
+                } else {
+                    strncpy(proc_comm, "unknown", sizeof(proc_comm)-1);
+                }
                 //Cache path
+                char fd_link[64];
+                snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
+                char path_buf[512];
+                ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
+                path_buf[n] = '\0';
+
+                std::cout << "[CoreEngine] Access: dev=" << st.st_dev
+                << " ino=" << st.st_ino
+                << " size=" << st.st_size
+                << " mtime=" << st.st_mtim.tv_sec
+                << " path=" << path_buf
+                << " PID=" << pid
+                << " PROC=" << proc_comm
+                << std::endl;
                 if (cache.get(st, RULESET_VERSION, decision)) {
                     hits++;  // برای Hit Rate
                     // پاسخ دادن...
@@ -136,6 +163,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
 
                     close(metadata->fd);
                     metadata = FAN_EVENT_NEXT(metadata, len);
+                    report_every(1);
                     continue;
                 }
 
@@ -148,7 +176,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 total_us += dt_us;
                 total_miss_us += dt_us; // اختیاری
                 decisions++;
-                report_every(100);
+                report_every(1);
 
                 metadata = FAN_EVENT_NEXT(metadata, len);
                 continue;
