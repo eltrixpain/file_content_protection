@@ -27,8 +27,6 @@ using SteadyClock = std::chrono::steady_clock;
 static uint64_t decisions = 0;
 static uint64_t hits = 0;
 static uint64_t total_us = 0;        // مجموع میکروثانیه کل تصمیم‌ها
-static uint64_t total_hit_us = 0;    // اختیاری: میانگین مخصوص hit
-static uint64_t total_miss_us = 0;   // اختیاری: میانگین مخصوص miss
 
 auto report_every = [](uint64_t n) {
     if (decisions % n == 0 && decisions > 0) {
@@ -120,32 +118,35 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
             if (fstat(metadata->fd, &st) == 0) {
                 int decision = 0;
 
-                pid_t pid = metadata->pid;
-                char proc_comm[256] = {0};
 
-                std::string comm_path = "/proc/" + std::to_string(pid) + "/comm";
-                std::ifstream comm_file(comm_path);
-                if (comm_file.is_open()) {
-                    comm_file.getline(proc_comm, sizeof(proc_comm));
-                    comm_file.close();
-                } else {
-                    strncpy(proc_comm, "unknown", sizeof(proc_comm)-1);
-                }
+                // // Just for debug and logging
+                // pid_t pid = metadata->pid;
+                // char proc_comm[256] = {0};
+                // std::string comm_path = "/proc/" + std::to_string(pid) + "/comm";
+                // std::ifstream comm_file(comm_path);
+                // if (comm_file.is_open()) {
+                //     comm_file.getline(proc_comm, sizeof(proc_comm));
+                //     comm_file.close();
+                // } else {
+                //     strncpy(proc_comm, "unknown", sizeof(proc_comm)-1);
+                // }
+                // char fd_link[64];
+                // snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
+                // char path_buf[512];
+                // ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
+                // path_buf[n] = '\0';
+
+                // std::cout << "[CoreEngine] Access: dev=" << st.st_dev
+                // << " ino=" << st.st_ino
+                // << " size=" << st.st_size
+                // << " mtime=" << st.st_mtim.tv_sec
+                // << " path=" << path_buf
+                // << " PID=" << pid
+                // << " PROC=" << proc_comm
+                // << std::endl;
+
+
                 //Cache path
-                char fd_link[64];
-                snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
-                char path_buf[512];
-                ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
-                path_buf[n] = '\0';
-
-                std::cout << "[CoreEngine] Access: dev=" << st.st_dev
-                << " ino=" << st.st_ino
-                << " size=" << st.st_size
-                << " mtime=" << st.st_mtim.tv_sec
-                << " path=" << path_buf
-                << " PID=" << pid
-                << " PROC=" << proc_comm
-                << std::endl;
                 if (cache.get(st, RULESET_VERSION, decision)) {
                     hits++;  // برای Hit Rate
                     // پاسخ دادن...
@@ -157,13 +158,10 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                     // زمان را جمع بزن:
                     auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                     total_us += dt_us;
-                    total_hit_us += dt_us; // اختیاری
                     decisions++;
-                    report_every(1000);
-
+                    report_every(100);
                     close(metadata->fd);
                     metadata = FAN_EVENT_NEXT(metadata, len);
-                    report_every(1);
                     continue;
                 }
 
@@ -174,9 +172,8 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 // پایان اندازه‌گیری برای miss:
                 auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                 total_us += dt_us;
-                total_miss_us += dt_us; // اختیاری
                 decisions++;
-                report_every(1);
+                report_every(100);
 
                 metadata = FAN_EVENT_NEXT(metadata, len);
                 continue;
