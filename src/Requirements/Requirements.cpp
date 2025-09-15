@@ -104,7 +104,26 @@ bool Requirements::validateConfig(const ConfigManager& cfg, StartupResult& out) 
         out.logs.push_back(out.error);
         return false;
     }
+    const uint64_t max_bytes = cfg.max_cache_bytes();
+    const uint64_t MIN_BYTES = 5ULL * 1024ULL;                              // 5KB
+    const uint64_t MAX_BYTES = 1ULL * 1024ULL * 1024ULL * 1024ULL; // 1GsB
 
+    if (max_bytes == 0) {
+        out.error = "[config] cache_max_size missing/invalid (expect like \"512MB\" or \"200KB\")";
+        out.logs.push_back(out.error);
+        return false;
+    }
+    if (max_bytes < MIN_BYTES) {
+        out.error = "[config] cache_max_size too small (<64KB)";
+        out.logs.push_back(out.error);
+        return false;
+    }
+    if (max_bytes > MAX_BYTES) {
+        out.error = "[config] cache_max_size too large (>1TB)";
+        out.logs.push_back(out.error);
+        return false;
+    }
+    out.logs.push_back("[config] cache_max_size: " + std::to_string(max_bytes) + " bytes");
     out.logs.push_back("[config] watch_mode: " + mode);
     out.logs.push_back("[config] watch_target: " + target);
     out.logs.push_back("[config] patterns loaded: " + std::to_string(cfg.patternCount()));

@@ -22,18 +22,18 @@ public:
     static std::string hashCanonical(const std::string& data);
     bool initRulesetVersion(sqlite3* db);
 
-    // NEW:
     uint64_t getRulesetVersion() const { return ruleset_version_; }
+    uint64_t max_cache_bytes() const { return max_cache_bytes_; }
 
 private:
     std::string watch_mode_;    // "path" | "mount"
     std::string watch_target_;
     std::vector<std::regex> patterns;
     std::vector<std::string> pattern_strings_;
-
     uint64_t ruleset_version_ = 0;
     std::string ruleset_hash_;
-    // removed: nlohmann::json config_json;
+    static uint64_t parse_size_kb_mb(const std::string& s);
+    uint64_t max_cache_bytes_ = 0;
 };
 
 #endif // REGEX_CONFIG_MANAGER_HPP

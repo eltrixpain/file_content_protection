@@ -30,7 +30,7 @@ bool CacheManager::get(const struct stat& st, uint64_t ruleset_version, int& dec
 
         const long long cur_mtime_ns =
             static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec;
-
+    
         if (row_ruleset_ver == static_cast<long long>(ruleset_version) &&
             row_mtime_ns    == cur_mtime_ns &&
             row_size        == static_cast<long long>(st.st_size)) {
