@@ -1,40 +1,40 @@
-// === src/CacheManager/CacheManager.cpp ===
-#include "CacheManager.hpp"
-#include <ctime>
-#include <iostream>
-#include <sys/stat.h>
-#include <string>
+    // === src/CacheManager/CacheManager.cpp ===
+    #include "CacheManager.hpp"
+    #include <ctime>
+    #include <iostream>
+    #include <sys/stat.h>
+    #include <string>
 
-// --- helper: file size ---
-static inline uint64_t file_size_if_exists(const std::string& p) {
-    struct stat st{};
-    if (::stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
-        return static_cast<uint64_t>(st.st_size);
+    // --- helper: file size ---
+    static inline uint64_t file_size_if_exists(const std::string& p) {
+        struct stat st{};
+        if (::stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+            return static_cast<uint64_t>(st.st_size);
+        }
+        return 0ULL;
     }
-    return 0ULL;
-}
 
-// --- helper: total sqlite size with WAL ---
-static inline uint64_t sqlite_total_size(const std::string& db_path) {
-    return file_size_if_exists(db_path)
-         + file_size_if_exists(db_path + "-wal"); // shm ناچیزه، می‌تونی حساب نکنی
-}
-
-// --- check before insert ---
-bool check_cache_capacity(const std::string& db_path, uint64_t max_bytes) {
-    uint64_t cur = sqlite_total_size(db_path);
-    if (cur >= max_bytes) {
-        // // Just for debugh and logging
-        // std::cerr << "[cache] size limit exceeded: "
-        //           << cur << " >= " << max_bytes << " bytes\n";
-        return false; 
+    // --- helper: total sqlite size with WAL ---
+    static inline uint64_t sqlite_total_size(const std::string& db_path) {
+        return file_size_if_exists(db_path)
+            + file_size_if_exists(db_path + "-wal");
     }
-    return true;
-}
+
+    // --- check before insert ---
+    bool check_cache_capacity(const std::string& db_path, uint64_t max_bytes) {
+        uint64_t cur = sqlite_total_size(db_path);
+        if (cur >= max_bytes) {
+            // // Just for debugh and logging
+            // std::cerr << "[cache] size limit exceeded: "
+            //           << cur << " >= " << max_bytes << " bytes\n";
+            return false; 
+        }
+        return true;
+    }
 
 
-// check cache table result ---> hit or miss
-bool CacheManager::get(const struct stat& st, uint64_t ruleset_version, int& decision) {
+    // check cache table result ---> hit or miss
+    bool CacheManager::get(const struct stat& st, uint64_t ruleset_version, int& decision) {
     if (!db_) return false;
 
     const char* sql =
@@ -69,11 +69,29 @@ bool CacheManager::get(const struct stat& st, uint64_t ruleset_version, int& dec
     }
 
     (void)sqlite3_finalize(stmt);
-    return hit;
-}
 
-// put new record into the hash table
-void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int decision ,uint64_t max_bytes) {
+    if (hit) {
+        const char* upd =
+            "UPDATE cache_entries "
+            "SET hit_count = hit_count + 1, last_access_ts = ? "
+            "WHERE dev=? AND ino=?;";
+        sqlite3_stmt* upd_stmt = nullptr;
+        if (sqlite3_prepare_v2(db_, upd, -1, &upd_stmt, nullptr) == SQLITE_OK) {
+            const long long now = static_cast<long long>(time(nullptr));
+            sqlite3_bind_int64(upd_stmt, 1, now);
+            sqlite3_bind_int64(upd_stmt, 2, static_cast<long long>(st.st_dev));
+            sqlite3_bind_int64(upd_stmt, 3, static_cast<long long>(st.st_ino));
+            (void)sqlite3_step(upd_stmt);
+            (void)sqlite3_finalize(upd_stmt);
+        }
+    }
+
+    return hit;
+    }
+
+
+    // put new record into the hash table
+    void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int decision ,uint64_t max_bytes) {
     if (!db_) return;
 
     // // Just for debug and logging
@@ -89,8 +107,8 @@ void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int deci
     }
     const char* sql =
         "INSERT OR REPLACE INTO cache_entries "
-        "(dev, ino, mtime_ns, size, ruleset_version, decision, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?);";
+        "(dev, ino, mtime_ns, size, ruleset_version, decision, last_access_ts, hit_count) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 0);";
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -106,9 +124,10 @@ void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int deci
     sqlite3_bind_int64(stmt, 3, mtime_ns);
     sqlite3_bind_int64(stmt, 4, static_cast<long long>(st.st_size));
     sqlite3_bind_int64(stmt, 5, static_cast<long long>(ruleset_version));
-    sqlite3_bind_int(stmt,   6, decision); // 0=ALLOW,1=BLOCK
+    sqlite3_bind_int(stmt,   6, decision);
     sqlite3_bind_int64(stmt, 7, now);
 
     (void)sqlite3_step(stmt);
     (void)sqlite3_finalize(stmt);
-}
+    }
+

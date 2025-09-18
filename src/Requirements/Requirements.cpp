@@ -16,12 +16,13 @@ CREATE TABLE IF NOT EXISTS cache_entries (
   size            INTEGER NOT NULL,
   ruleset_version INTEGER NOT NULL,
   decision        INTEGER NOT NULL,
-  updated_at      INTEGER NOT NULL,
+  last_access_ts  INTEGER NOT NULL,
+  hit_count       INTEGER DEFAULT 0,
   PRIMARY KEY (dev, ino)
 );
 
 CREATE INDEX IF NOT EXISTS idx_cache_version ON cache_entries(ruleset_version);
-CREATE INDEX IF NOT EXISTS idx_cache_updated ON cache_entries(updated_at);
+CREATE INDEX IF NOT EXISTS idx_cache_last_access ON cache_entries(last_access_ts);
 
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS meta (
 INSERT OR IGNORE INTO meta(key, value) VALUES ('ruleset_version','1');
 INSERT OR IGNORE INTO meta(key, value) VALUES ('ruleset_hash','');
 )SQL";
+
 
 
 // Config log

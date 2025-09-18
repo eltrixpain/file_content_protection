@@ -26,7 +26,7 @@ using SteadyClock = std::chrono::steady_clock;
 
 static uint64_t decisions = 0;
 static uint64_t hits = 0;
-static uint64_t total_us = 0;        // مجموع میکروثانیه کل تصمیم‌ها
+static uint64_t total_us = 0;        
 
 auto report_every = [](uint64_t n) {
     if (decisions % n == 0 && decisions > 0) {
