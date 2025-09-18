@@ -19,5 +19,8 @@ all: fileguard
 fileguard:
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) -o fileguard $(SRC_FILES) $(LIBS)
 
+debug: CXXFLAGS += -DDEBUG -g
+debug: clean fileguard
+
 clean:
 	rm -f fileguard

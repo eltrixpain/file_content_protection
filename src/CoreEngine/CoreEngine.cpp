@@ -103,7 +103,9 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
 
             //  Exclude progarm pid and logger pid from checking
             if (metadata->pid == self_pid || metadata->pid == logger_pid) {
-                // std::cout << "[Access] By program itself" << std::endl ;
+                #ifdef DEBUG
+                std::cout << "[Access] By program itself" << std::endl ;
+                #endif
                 struct fanotify_response resp{};
                 resp.fd = metadata->fd;
                 resp.response = FAN_ALLOW;
@@ -118,38 +120,37 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
             if (fstat(metadata->fd, &st) == 0) {
                 int decision = 0;
 
+                #ifdef DEBUG
+                pid_t pid = metadata->pid;
+                char proc_comm[256] = {0};
+                std::string comm_path = "/proc/" + std::to_string(pid) + "/comm";
+                std::ifstream comm_file(comm_path);
+                if (comm_file.is_open()) {
+                    comm_file.getline(proc_comm, sizeof(proc_comm));
+                    comm_file.close();
+                } else {
+                    strncpy(proc_comm, "unknown", sizeof(proc_comm)-1);
+                }
+                char fd_link[64];
+                snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
+                char path_buf[512];
+                ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
+                path_buf[n] = '\0';
 
-                // // Just for debug and logging
-                // pid_t pid = metadata->pid;
-                // char proc_comm[256] = {0};
-                // std::string comm_path = "/proc/" + std::to_string(pid) + "/comm";
-                // std::ifstream comm_file(comm_path);
-                // if (comm_file.is_open()) {
-                //     comm_file.getline(proc_comm, sizeof(proc_comm));
-                //     comm_file.close();
-                // } else {
-                //     strncpy(proc_comm, "unknown", sizeof(proc_comm)-1);
-                // }
-                // char fd_link[64];
-                // snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
-                // char path_buf[512];
-                // ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
-                // path_buf[n] = '\0';
-
-                // std::cout << "[CoreEngine] Access: dev=" << st.st_dev
-                // << " ino=" << st.st_ino
-                // << " size=" << st.st_size
-                // << " mtime=" << st.st_mtim.tv_sec
-                // << " path=" << path_buf
-                // << " PID=" << pid
-                // << " PROC=" << proc_comm
-                // << std::endl;
+                std::cout << "[CoreEngine] Access: dev=" << st.st_dev
+                << " ino=" << st.st_ino
+                << " size=" << st.st_size
+                << " mtime=" << st.st_mtim.tv_sec
+                << " path=" << path_buf
+                << " PID=" << pid
+                << " PROC=" << proc_comm
+                << std::endl;
+                #endif
 
 
                 //Cache path
                 if (cache.get(st, RULESET_VERSION, decision)) {
-                    hits++;  // برای Hit Rate
-                    // پاسخ دادن...
+                    hits++;
                     struct fanotify_response resp{};
                     resp.fd = metadata->fd;
                     resp.response = (decision == 0) ? FAN_ALLOW : FAN_DENY;
@@ -159,7 +160,9 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                     auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                     total_us += dt_us;
                     decisions++;
-                    report_every(1000);
+                    #ifdef DEBUG
+                    report_every(1);
+                    #endif
                     close(metadata->fd);
                     metadata = FAN_EVENT_NEXT(metadata, len);
                     continue;
@@ -173,7 +176,9 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                 total_us += dt_us;
                 decisions++;
-                report_every(1000);
+                #ifdef DEBUG
+                report_every(1);
+                #endif
 
                 metadata = FAN_EVENT_NEXT(metadata, len);
                 continue;
@@ -182,7 +187,9 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
 
             // Allow file if fstat failed due to priventing of deadlock
             {
-                std::cout << "whyyyyyyyyy!!!!!!" << std::endl;
+                #ifdef DEBUG
+                std::cout << "fstat doesn't work" << std::endl;
+                #endif
                 struct fanotify_response resp{};
                 resp.fd = metadata->fd;
                 resp.response = FAN_ALLOW;

@@ -24,9 +24,10 @@
     bool check_cache_capacity(const std::string& db_path, uint64_t max_bytes) {
         uint64_t cur = sqlite_total_size(db_path);
         if (cur >= max_bytes) {
-            // // Just for debugh and logging
-            // std::cerr << "[cache] size limit exceeded: "
-            //           << cur << " >= " << max_bytes << " bytes\n";
+            #ifdef DEBUG
+            std::cerr << "[cache] size limit exceeded: "
+                      << cur << " >= " << max_bytes << " bytes\n";
+            #endif
             return false; 
         }
         return true;
@@ -94,14 +95,16 @@
     void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int decision ,uint64_t max_bytes) {
     if (!db_) return;
 
-    // // Just for debug and logging
-    // std::cout << "[cache] put: dev=" << st.st_dev
-    //           << " ino=" << st.st_ino
-    //           << " size=" << st.st_size
-    //           << " mtime=" << st.st_mtim.tv_sec
-    //           << " ver=" << ruleset_version
-    //           << " decision=" << decision
-    //           << std::endl;
+   #ifdef DEBUG
+    std::cout << "[cache] put: dev=" << st.st_dev
+              << " ino=" << st.st_ino
+              << " size=" << st.st_size
+              << " mtime=" << st.st_mtim.tv_sec
+              << " ver=" << ruleset_version
+              << " decision=" << decision
+              << std::endl;
+    #endif
+
     if (!check_cache_capacity("cache/cache.sqlite",max_bytes)){
         return ;
     }
