@@ -19,6 +19,7 @@
 
 
 #define BUF_SIZE 4096
+#define REPORT_PER_CYCLE 100
 
 #include <chrono>
 using SteadyClock = std::chrono::steady_clock;
@@ -168,7 +169,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                     total_us += dt_us;
                     decisions++;
                     //#ifdef DEBUG
-                    report_every(100);
+                    report_every(REPORT_PER_CYCLE);
                     //#endif
                     close(metadata->fd);
                     metadata = FAN_EVENT_NEXT(metadata, len);
@@ -185,7 +186,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 decisions++;
                 total_bytes += (uint64_t)st.st_size; 
                 //#ifdef DEBUG
-                report_every(100);
+                report_every(REPORT_PER_CYCLE);
                 //#endif
 
                 metadata = FAN_EVENT_NEXT(metadata, len);
