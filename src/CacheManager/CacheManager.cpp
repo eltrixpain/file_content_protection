@@ -86,6 +86,43 @@
         (void)sqlite3_exec(db, "COMMIT;", nullptr, nullptr, &err);
     }
 
+    //LFU implemention
+    static void evict_lfu(sqlite3* db, int max_rows_to_evict) {
+        if (!db || max_rows_to_evict <= 0) return;
+
+        const char* sel_sql =
+            "SELECT dev, ino FROM cache_entries "
+            "ORDER BY hit_count ASC, last_access_ts ASC "
+            "LIMIT ?;";
+
+        sqlite3_stmt* sel = nullptr;
+        if (sqlite3_prepare_v2(db, sel_sql, -1, &sel, nullptr) != SQLITE_OK) return;
+        sqlite3_bind_int(sel, 1, max_rows_to_evict);
+
+        std::vector<std::pair<long long,long long>> keys;
+        while (sqlite3_step(sel) == SQLITE_ROW) {
+            keys.emplace_back(sqlite3_column_int64(sel, 0), sqlite3_column_int64(sel, 1));
+        }
+        (void)sqlite3_finalize(sel);
+        if (keys.empty()) return;
+
+        char* err = nullptr;
+        (void)sqlite3_exec(db, "BEGIN IMMEDIATE;", nullptr, nullptr, &err);
+        const char* del_sql = "DELETE FROM cache_entries WHERE dev=? AND ino=?;";
+        sqlite3_stmt* del = nullptr;
+        if (sqlite3_prepare_v2(db, del_sql, -1, &del, nullptr) == SQLITE_OK) {
+            for (auto& k : keys) {
+                sqlite3_bind_int64(del, 1, k.first);
+                sqlite3_bind_int64(del, 2, k.second);
+                (void)sqlite3_step(del);
+                (void)sqlite3_reset(del);
+            }
+            (void)sqlite3_finalize(del);
+        }
+        (void)sqlite3_exec(db, "COMMIT;", nullptr, nullptr, &err);
+    }
+
+
 
 
     // check cache table result ---> hit or miss
@@ -162,10 +199,10 @@
     if (!check_cache_capacity(db_, max_bytes)){
         //#ifdef DEBUG
         std::cout << "\033[31m"
-          << "[cache][evict] Cache full. Removing least recently used item"
+          << "[cache][evict] Cache full. Removing least frequently used item"
           << "\033[0m" << std::endl;
         //#endif
-        evict_lru(db_, 100);
+        evict_lfu(db_, 100);
     }
     const char* sql =
         "INSERT OR REPLACE INTO cache_entries "
