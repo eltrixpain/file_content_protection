@@ -4,34 +4,88 @@
     #include <iostream>
     #include <sys/stat.h>
     #include <string>
+    #include <vector>
 
-    // --- helper: file size ---
-    static inline uint64_t file_size_if_exists(const std::string& p) {
-        struct stat st{};
-        if (::stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
-            return static_cast<uint64_t>(st.st_size);
+
+    // check cache size (dbstat-based only)
+    bool check_cache_capacity(sqlite3* db, uint64_t max_bytes) {
+        if (!db) return true;
+        uint64_t live_bytes = 0;
+
+        const char* sql =
+            "SELECT SUM(pgsize - unused) "
+            "FROM dbstat "
+            "WHERE name IN ("
+            "'cache_entries',"
+            "'sqlite_autoindex_cache_entries_1',"
+            "'idx_cache_version',"
+            "'idx_cache_last_access'"
+            ");";
+
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+            if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_type(stmt, 0) != SQLITE_NULL) {
+                live_bytes = static_cast<uint64_t>(sqlite3_column_int64(stmt, 0));
+            }
+            (void)sqlite3_finalize(stmt);
         }
-        return 0ULL;
-    }
 
-    // --- helper: total sqlite size with WAL ---
-    static inline uint64_t sqlite_total_size(const std::string& db_path) {
-        return file_size_if_exists(db_path)
-            + file_size_if_exists(db_path + "-wal");
-    }
-
-    // --- check before insert ---
-    bool check_cache_capacity(const std::string& db_path, uint64_t max_bytes) {
-        uint64_t cur = sqlite_total_size(db_path);
-        if (cur >= max_bytes) {
+        if (live_bytes >= max_bytes) {
             #ifdef DEBUG
-            std::cerr << "[cache] size limit exceeded: "
-                      << cur << " >= " << max_bytes << " bytes\n";
+            std::cerr << "[cache] size limit exceeded (dbstat): "
+                    << live_bytes << " >= " << max_bytes << " bytes\n";
             #endif
-            return false; 
+            return false;
         }
         return true;
     }
+
+
+
+    // LRU implementaion
+    static void evict_lru(sqlite3* db, int max_rows_to_evict) {
+        if (!db || max_rows_to_evict <= 0) return;
+
+        // Select oldest entries by last_access_ts
+        const char* sel_sql =
+            "SELECT dev, ino FROM cache_entries "
+            "ORDER BY last_access_ts ASC "
+            "LIMIT ?;";
+
+        sqlite3_stmt* sel = nullptr;
+        if (sqlite3_prepare_v2(db, sel_sql, -1, &sel, nullptr) != SQLITE_OK) {
+            return;
+        }
+        sqlite3_bind_int(sel, 1, max_rows_to_evict);
+
+        // Collect keys to delete
+        std::vector<std::pair<long long,long long>> keys;
+        while (sqlite3_step(sel) == SQLITE_ROW) {
+            long long dev = sqlite3_column_int64(sel, 0);
+            long long ino = sqlite3_column_int64(sel, 1);
+            keys.emplace_back(dev, ino);
+        }
+        (void)sqlite3_finalize(sel);
+        if (keys.empty()) return;
+
+        // Delete in a transaction
+        char* err = nullptr;
+        (void)sqlite3_exec(db, "BEGIN IMMEDIATE;", nullptr, nullptr, &err);
+        const char* del_sql =
+            "DELETE FROM cache_entries WHERE dev=? AND ino=?;";
+        sqlite3_stmt* del = nullptr;
+        if (sqlite3_prepare_v2(db, del_sql, -1, &del, nullptr) == SQLITE_OK) {
+            for (auto& k : keys) {
+                sqlite3_bind_int64(del, 1, k.first);
+                sqlite3_bind_int64(del, 2, k.second);
+                (void)sqlite3_step(del);
+                (void)sqlite3_reset(del);
+            }
+            (void)sqlite3_finalize(del);
+        }
+        (void)sqlite3_exec(db, "COMMIT;", nullptr, nullptr, &err);
+    }
+
 
 
     // check cache table result ---> hit or miss
@@ -64,7 +118,7 @@
         if (row_ruleset_ver == static_cast<long long>(ruleset_version) &&
             row_mtime_ns    == cur_mtime_ns &&
             row_size        == static_cast<long long>(st.st_size)) {
-            decision = row_decision;  // 0=ALLOW,1=BLOCK
+            decision = row_decision;
             hit = true;
         }
     }
@@ -105,8 +159,9 @@
               << std::endl;
     #endif
 
-    if (!check_cache_capacity("cache/cache.sqlite",max_bytes)){
-        return ;
+    if (!check_cache_capacity(db_, max_bytes)){
+        std::cout << "delete based on the LRU" << std::endl;
+        evict_lru(db_, 32);
     }
     const char* sql =
         "INSERT OR REPLACE INTO cache_entries "

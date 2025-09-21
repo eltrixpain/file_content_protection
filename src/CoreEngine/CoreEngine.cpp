@@ -161,7 +161,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                     total_us += dt_us;
                     decisions++;
                     #ifdef DEBUG
-                    report_every(1);
+                    report_every(1000);
                     #endif
                     close(metadata->fd);
                     metadata = FAN_EVENT_NEXT(metadata, len);
@@ -177,7 +177,7 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 total_us += dt_us;
                 decisions++;
                 #ifdef DEBUG
-                report_every(1);
+                report_every(1000);
                 #endif
 
                 metadata = FAN_EVENT_NEXT(metadata, len);

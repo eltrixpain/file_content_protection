@@ -104,8 +104,8 @@ bool Requirements::validateConfig(const ConfigManager& cfg, StartupResult& out) 
         return false;
     }
     const uint64_t max_bytes = cfg.max_cache_bytes();
-    const uint64_t MIN_BYTES = 10 * 1024ULL * 1024ULL;                              // 5KB
-    const uint64_t MAX_BYTES = 1ULL * 1024ULL * 1024ULL * 1024ULL; // 1GsB
+    const uint64_t MIN_BYTES = 1 * 1024ULL;                              // 5KB
+    const uint64_t MAX_BYTES = 1ULL * 1024ULL * 1024ULL * 1024ULL; // 1GB
 
     if (max_bytes == 0) {
         out.error = "[config] cache_max_size missing/invalid (expect like \"512MB\" or \"200KB\")";
