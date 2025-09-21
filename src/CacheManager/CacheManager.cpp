@@ -161,7 +161,9 @@
 
     if (!check_cache_capacity(db_, max_bytes)){
         //#ifdef DEBUG
-        std::cout << "[cache][evict] Cache full. Removing least recently used item" << std::endl;
+        std::cout << "\033[31m"
+          << "[cache][evict] Cache full. Removing least recently used item"
+          << "\033[0m" << std::endl;
         //#endif
         evict_lru(db_, 100);
     }

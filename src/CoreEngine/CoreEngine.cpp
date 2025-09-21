@@ -35,11 +35,12 @@ auto report_every = [](uint64_t n) {
         double avg_ms = (double)total_us / decisions / 1000.0;
         double hit_rate = (double)hits * 100.0 / (double)decisions;
         double byte_hit_rate = total_bytes ? (double)hit_bytes * 100.0 / (double)total_bytes : 0.0;
-        std::cout << "[metrics] decisions=" << decisions
-                  << " hit_rate=" << hit_rate << "% "
-                  << "byte_hit_rate=" << byte_hit_rate << "% "       
-                  << "avg_decision=" << avg_ms << " ms"
-                  << std::endl;
+        std::cout << "\033[32m"
+          << "[metrics] decisions=" << decisions
+          << " hit_rate=" << hit_rate << "% "
+          << "byte_hit_rate=" << byte_hit_rate << "% "
+          << "avg_decision=" << avg_ms << " ms"
+          << "\033[0m" << std::endl;
     }
 };
 

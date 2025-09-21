@@ -1,0 +1,8 @@
+Cache size = 20KB
+Dataset = 600 
+1KB < File_size < 5MB
+Approximate maximum number of records in the cache = 400
+Algorithm = LRU
+Initial conditions = Cache was empty
+Metrics = hit_rate, byte_hit_rate, abg_decision
+Number of evictions per cycle = 100
