@@ -160,8 +160,10 @@
     #endif
 
     if (!check_cache_capacity(db_, max_bytes)){
-        std::cout << "delete based on the LRU" << std::endl;
-        evict_lru(db_, 32);
+        //#ifdef DEBUG
+        std::cout << "[cache][evict] Cache full. Removing least recently used item" << std::endl;
+        //#endif
+        evict_lru(db_, 100);
     }
     const char* sql =
         "INSERT OR REPLACE INTO cache_entries "

@@ -26,14 +26,18 @@ using SteadyClock = std::chrono::steady_clock;
 
 static uint64_t decisions = 0;
 static uint64_t hits = 0;
-static uint64_t total_us = 0;        
+static uint64_t total_us = 0;     
+static uint64_t total_bytes = 0;   
+static uint64_t hit_bytes = 0;   
 
 auto report_every = [](uint64_t n) {
     if (decisions % n == 0 && decisions > 0) {
         double avg_ms = (double)total_us / decisions / 1000.0;
         double hit_rate = (double)hits * 100.0 / (double)decisions;
+        double byte_hit_rate = total_bytes ? (double)hit_bytes * 100.0 / (double)total_bytes : 0.0;
         std::cout << "[metrics] decisions=" << decisions
                   << " hit_rate=" << hit_rate << "% "
+                  << "byte_hit_rate=" << byte_hit_rate << "% "       
                   << "avg_decision=" << avg_ms << " ms"
                   << std::endl;
     }
@@ -151,6 +155,8 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 //Cache path
                 if (cache.get(st, RULESET_VERSION, decision)) {
                     hits++;
+                    total_bytes += (uint64_t)st.st_size;
+                    hit_bytes   += (uint64_t)st.st_size; 
                     struct fanotify_response resp{};
                     resp.fd = metadata->fd;
                     resp.response = (decision == 0) ? FAN_ALLOW : FAN_DENY;
@@ -160,9 +166,9 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                     auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                     total_us += dt_us;
                     decisions++;
-                    #ifdef DEBUG
-                    report_every(1000);
-                    #endif
+                    //#ifdef DEBUG
+                    report_every(100);
+                    //#endif
                     close(metadata->fd);
                     metadata = FAN_EVENT_NEXT(metadata, len);
                     continue;
@@ -176,9 +182,10 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
                 auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                 total_us += dt_us;
                 decisions++;
-                #ifdef DEBUG
-                report_every(1000);
-                #endif
+                total_bytes += (uint64_t)st.st_size; 
+                //#ifdef DEBUG
+                report_every(100);
+                //#endif
 
                 metadata = FAN_EVENT_NEXT(metadata, len);
                 continue;
