@@ -148,14 +148,20 @@
     static void evict_lfu(sqlite3* db, int max_rows_to_evict) {
         if (!db || max_rows_to_evict <= 0) return;
 
+        const double tau_seconds = 3600.0; 
+        const long long now_sec = static_cast<long long>(time(nullptr));
         const char* sel_sql =
             "SELECT dev, ino FROM cache_entries "
-            "ORDER BY hit_count ASC, last_access_ts ASC "
-            "LIMIT ?;";
+            "ORDER BY (CAST(hit_count AS REAL) / (1.0 + "
+            "         (MAX(?1 - last_access_ts, 0) / ?2))) ASC, "
+            "         last_access_ts ASC "
+            "LIMIT ?3;";
 
         sqlite3_stmt* sel = nullptr;
         if (sqlite3_prepare_v2(db, sel_sql, -1, &sel, nullptr) != SQLITE_OK) return;
-        sqlite3_bind_int(sel, 1, max_rows_to_evict);
+        sqlite3_bind_int64(sel, 1, now_sec);                 // ?1 = now
+        sqlite3_bind_double(sel, 2, tau_seconds);            // ?2 = τ
+        sqlite3_bind_int(sel, 3, max_rows_to_evict);         // ?3 = LIMIT
 
         std::vector<std::pair<long long,long long>> keys;
         while (sqlite3_step(sel) == SQLITE_ROW) {
