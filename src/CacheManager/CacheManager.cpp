@@ -9,62 +9,6 @@
     #include <cmath>
 
 
-    // LFU Size
-    static void evict_lfu_size(sqlite3* db, int max_rows_to_evict, double beta, int candidate_limit) {
-        if (!db || max_rows_to_evict <= 0) return;
-        if (candidate_limit <= 0) candidate_limit = 256;
-
-        const char* sel_sql =
-            "SELECT dev, ino, hit_count, size, last_access_ts "
-            "FROM cache_entries "
-            "ORDER BY hit_count ASC, last_access_ts ASC "
-            "LIMIT ?;";
-
-        sqlite3_stmt* sel = nullptr;
-        if (sqlite3_prepare_v2(db, sel_sql, -1, &sel, nullptr) != SQLITE_OK) return;
-        sqlite3_bind_int(sel, 1, candidate_limit);
-
-        struct Row { long long dev, ino; long long hits; long long sz; long long last_ts; double score; };
-        std::vector<Row> rows;
-        while (sqlite3_step(sel) == SQLITE_ROW) {
-            Row r;
-            r.dev     = sqlite3_column_int64(sel, 0);
-            r.ino     = sqlite3_column_int64(sel, 1);
-            r.hits    = sqlite3_column_int64(sel, 2);
-            r.sz      = sqlite3_column_int64(sel, 3);
-            r.last_ts = sqlite3_column_int64(sel, 4);
-            double sbytes = static_cast<double>(r.sz);
-            double h      = static_cast<double>(r.hits);
-            r.score = h * (beta * std::log1p(sbytes));
-            rows.push_back(r);
-        }
-        (void)sqlite3_finalize(sel);
-        if (rows.empty()) return;
-
-        std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b){
-            if (a.score != b.score) return a.score < b.score;
-            return a.last_ts < b.last_ts;
-        });
-
-        if (static_cast<size_t>(max_rows_to_evict) < rows.size())
-            rows.resize(static_cast<size_t>(max_rows_to_evict));
-
-        char* err = nullptr;
-        (void)sqlite3_exec(db, "BEGIN IMMEDIATE;", nullptr, nullptr, &err);
-        const char* del_sql = "DELETE FROM cache_entries WHERE dev=? AND ino=?;";
-        sqlite3_stmt* del = nullptr;
-        if (sqlite3_prepare_v2(db, del_sql, -1, &del, nullptr) == SQLITE_OK) {
-            for (auto& r : rows) {
-                sqlite3_bind_int64(del, 1, r.dev);
-                sqlite3_bind_int64(del, 2, r.ino);
-                (void)sqlite3_step(del);
-                (void)sqlite3_reset(del);
-            }
-            (void)sqlite3_finalize(del);
-        }
-        (void)sqlite3_exec(db, "COMMIT;", nullptr, nullptr, &err);
-    }
-
     // check cache size (dbstat-based only)
     bool check_cache_capacity(sqlite3* db, uint64_t max_bytes) {
         if (!db) return true;
@@ -98,9 +42,69 @@
         return true;
     }
 
+    // LFU Size
+    #ifdef LFU_SIZE
+    static void evict_lfu_size(sqlite3* db, int max_rows_to_evict, double beta, int candidate_limit) {
+        if (!db || max_rows_to_evict <= 0) return;
+        if (candidate_limit <= 0) candidate_limit = 256;
+        const double tau_seconds = 3600.0; 
+        const long long now_sec = static_cast<long long>(time(nullptr));
+        const char* sel_sql =
+            "SELECT dev, ino, hit_count, size, last_access_ts "
+            "FROM cache_entries "
+            "ORDER BY hit_count ASC, last_access_ts ASC "
+            "LIMIT ?;";
 
+        sqlite3_stmt* sel = nullptr;
+        if (sqlite3_prepare_v2(db, sel_sql, -1, &sel, nullptr) != SQLITE_OK) return;
+        sqlite3_bind_int(sel, 1, candidate_limit);
+
+        struct Row { long long dev, ino; long long hits; long long sz; long long last_ts; double score; };
+        std::vector<Row> rows;
+        while (sqlite3_step(sel) == SQLITE_ROW) {
+            Row r;
+            r.dev     = sqlite3_column_int64(sel, 0);
+            r.ino     = sqlite3_column_int64(sel, 1);
+            r.hits    = sqlite3_column_int64(sel, 2);
+            r.sz      = sqlite3_column_int64(sel, 3);
+            r.last_ts = sqlite3_column_int64(sel, 4);
+            double sbytes = static_cast<double>(r.sz);
+            double h      = static_cast<double>(r.hits);
+            double age = (now_sec > r.last_ts) ? double(now_sec - r.last_ts) : 0.0;
+            double eff_hits = h / (1.0 + age / tau_seconds);
+            r.score = eff_hits * (beta * std::log1p(sbytes));
+            rows.push_back(r);
+        }
+        (void)sqlite3_finalize(sel);
+        if (rows.empty()) return;
+
+        std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b){
+            if (a.score != b.score) return a.score < b.score;
+            return a.last_ts < b.last_ts;
+        });
+
+        if (static_cast<size_t>(max_rows_to_evict) < rows.size())
+            rows.resize(static_cast<size_t>(max_rows_to_evict));
+
+        char* err = nullptr;
+        (void)sqlite3_exec(db, "BEGIN IMMEDIATE;", nullptr, nullptr, &err);
+        const char* del_sql = "DELETE FROM cache_entries WHERE dev=? AND ino=?;";
+        sqlite3_stmt* del = nullptr;
+        if (sqlite3_prepare_v2(db, del_sql, -1, &del, nullptr) == SQLITE_OK) {
+            for (auto& r : rows) {
+                sqlite3_bind_int64(del, 1, r.dev);
+                sqlite3_bind_int64(del, 2, r.ino);
+                (void)sqlite3_step(del);
+                (void)sqlite3_reset(del);
+            }
+            (void)sqlite3_finalize(del);
+        }
+        (void)sqlite3_exec(db, "COMMIT;", nullptr, nullptr, &err);
+    }
+    #endif
 
     // LRU implementaion
+    #ifdef LRU
     static void evict_lru(sqlite3* db, int max_rows_to_evict) {
         if (!db || max_rows_to_evict <= 0) return;
 
@@ -143,8 +147,10 @@
         }
         (void)sqlite3_exec(db, "COMMIT;", nullptr, nullptr, &err);
     }
+    #endif
 
     //LFU implemention
+    #ifdef LFU
     static void evict_lfu(sqlite3* db, int max_rows_to_evict) {
         if (!db || max_rows_to_evict <= 0) return;
 
@@ -185,9 +191,7 @@
         }
         (void)sqlite3_exec(db, "COMMIT;", nullptr, nullptr, &err);
     }
-
-
-
+    #endif
 
     // check cache table result ---> hit or miss
     bool CacheManager::get(const struct stat& st, uint64_t ruleset_version, int& decision) {
@@ -261,27 +265,28 @@
     #endif
 
     if (!check_cache_capacity(db_, max_bytes)){
-        //#ifdef DEBUG
+        #ifdef LFU_SIZE
         std::cout << "\033[31m"
           << "[cache][evict] Cache full. Removing based on f(hit_count , size) item"
           << "\033[0m" << std::endl;
-        //#endif
         evict_lfu_size(db_ ,10 , 5 , 1000);
-
-        ////#ifdef DEBUG
-        // std::cout << "\033[31m"
-        //   << "[cache][evict] Cache full. Removing least recently used item"
-        //   << "\033[0m" << std::endl;
-        ////#endif
-        //evict_lru(db_,10);
-
-        // //#ifdef DEBUG
-        // std::cout << "\033[31m"
-        //   << "[cache][evict] Cache full. Removing least frequently used item"
-        //   << "\033[0m" << std::endl;
-        // //#endif
-        // evict_lfu(db_,10);
+        #endif
         
+
+        #ifdef LRU
+        std::cout << "\033[31m"
+          << "[cache][evict] Cache full. Removing least recently used item"
+          << "\033[0m" << std::endl;
+        evict_lru(db_,10);
+        #endif
+
+
+        #ifdef LFU
+        std::cout << "\033[31m"
+          << "[cache][evict] Cache full. Removing least frequently used item"
+          << "\033[0m" << std::endl;
+        evict_lfu(db_,10);
+        #endif
         
     }
     const char* sql =

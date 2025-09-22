@@ -19,7 +19,18 @@ all: fileguard
 fileguard:
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) -o fileguard $(SRC_FILES) $(LIBS)
 
-debug: CXXFLAGS += -DDEBUG -g
+# --- cache policies ---
+lru: CXXFLAGS += -DLRU
+lru: clean fileguard
+
+lfu: CXXFLAGS += -DLFU
+lfu: clean fileguard
+
+lfu_size: CXXFLAGS += -DLFU_SIZE
+lfu_size: clean fileguard
+
+# --- debug build ---
+debug: CXXFLAGS += -DDEBUG -g -DLRU
 debug: clean fileguard
 
 clean:
