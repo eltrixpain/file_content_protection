@@ -257,10 +257,26 @@
     if (!check_cache_capacity(db_, max_bytes)){
         //#ifdef DEBUG
         std::cout << "\033[31m"
-          << "[cache][evict] Cache full. Removing least frequently used item"
+          << "[cache][evict] Cache full. Removing based on f(hit_count , size) item"
           << "\033[0m" << std::endl;
         //#endif
-        evict_lfu_size(db_ ,100 , 3 , 1000);
+        evict_lfu_size(db_ ,10 , 5 , 1000);
+
+        ////#ifdef DEBUG
+        // std::cout << "\033[31m"
+        //   << "[cache][evict] Cache full. Removing least recently used item"
+        //   << "\033[0m" << std::endl;
+        ////#endif
+        //evict_lru(db_,10);
+
+        // //#ifdef DEBUG
+        // std::cout << "\033[31m"
+        //   << "[cache][evict] Cache full. Removing least frequently used item"
+        //   << "\033[0m" << std::endl;
+        // //#endif
+        // evict_lfu(db_,10);
+        
+        
     }
     const char* sql =
         "INSERT OR REPLACE INTO cache_entries "

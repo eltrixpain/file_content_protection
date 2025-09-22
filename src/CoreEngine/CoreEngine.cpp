@@ -19,7 +19,7 @@
 
 
 #define BUF_SIZE 4096
-#define REPORT_PER_CYCLE 100
+#define REPORT_PER_CYCLE 50
 
 #include <chrono>
 using SteadyClock = std::chrono::steady_clock;
