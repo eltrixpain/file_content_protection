@@ -8,16 +8,14 @@
 
 struct StartupResult {
     bool ok = false;
-    std::string error;              // خلاصه خطای نهایی برای stderr
-    std::vector<std::string> logs;  // لاگ‌های مرحله‌ای (برای نوشتن در فایل)
+    std::string error;              
+    std::vector<std::string> logs;
     ConfigManager config;
     std::unique_ptr<sqlite3, void(*)(sqlite3*)> db{nullptr, [](sqlite3* p){ if (p) sqlite3_close(p); }};
 };
 
-// یک کلاس ساده برای اجرای همه‌ی pre-run checks
 class Requirements {
 public:
-    // مسیر config.json و مسیر cache.sqlite را می‌گیرد و همه‌ی بررسی‌ها را انجام می‌دهد
     static StartupResult run(const std::string& config_path,
                              const std::string& db_path);
 

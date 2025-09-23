@@ -174,6 +174,28 @@ bool Requirements::initRulesetVersion(StartupResult& out) {
     return true;
 }
 
+static void invalidate_to_meta_ruleset(sqlite3* db) {
+    if (!db) return;
+    char* err = nullptr;
+    sqlite3_exec(db, "BEGIN IMMEDIATE;", nullptr, nullptr, &err);
+
+    const char* del_sql =
+        "DELETE FROM cache_entries "
+        "WHERE ruleset_version <> ("
+        "  SELECT CAST(value AS INTEGER) "
+        "  FROM meta WHERE key='ruleset_version' LIMIT 1"
+        ");";
+
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db, del_sql, -1, &st, nullptr) == SQLITE_OK) {
+        (void)sqlite3_step(st);
+        (void)sqlite3_finalize(st);
+    }
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, &err);
+}
+
+
+
 
 StartupResult Requirements::run(const std::string& config_path,
                                 const std::string& db_path) {
@@ -204,7 +226,7 @@ StartupResult Requirements::run(const std::string& config_path,
         for (auto& l : res.logs) fileLog(l);
         return res;
     }
-
+    invalidate_to_meta_ruleset(res.db.get());
     // Ok
     res.ok = true;
     for (auto& l : res.logs) fileLog(l);

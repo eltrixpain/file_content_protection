@@ -30,7 +30,7 @@ lfu_size: CXXFLAGS += -DLFU_SIZE
 lfu_size: clean fileguard
 
 # --- debug build ---
-debug: CXXFLAGS += -DDEBUG -g -DLRU
+debug: CXXFLAGS += -DDEBUG -g -DLFU_SIZE
 debug: clean fileguard
 
 clean:
