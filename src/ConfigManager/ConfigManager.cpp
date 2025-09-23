@@ -7,6 +7,7 @@
 #include <iostream>
 #include <regex>
 #include <stdexcept>
+#include <filesystem>
 
 // JSON (header-only)
 #include <nlohmann/json.hpp>
@@ -14,14 +15,24 @@ using nlohmann::json;
 
 // sqlite
 #include <sqlite3.h>
-
-// اختیاری: اگر OpenSSL داری، این رو فعال کن و به لینکرت -lcrypto بده
-// #define USE_OPENSSL_SHA256
 #ifdef USE_OPENSSL_SHA256
 #include <openssl/sha.h>
 #endif
 
-// -------- helpers --------
+static std::string normalizePath(const std::string& path) {
+    namespace fs = std::filesystem;
+    try {
+        fs::path p(path);
+        fs::path norm = fs::weakly_canonical(p);
+        std::string result = norm.string();
+        if (result.size() > 1 && result.back() == '/')
+            result.pop_back();
+        return result;
+    } catch (...) {
+        return path;
+    }
+}
+
 static inline std::string toLower(std::string s) {
     for (char& c : s) c = (char)std::tolower((unsigned char)c);
     return s;
@@ -54,13 +65,11 @@ uint64_t ConfigManager::parse_size_kb_mb(const std::string& raw) {
 
     if (unit == "K" || unit == "KB") return n * 1024ULL;
     if (unit == "M" || unit == "MB") return n * 1024ULL * 1024ULL;
-
-    // به اینجا نباید برسیم چون regex محدود کرده
     throw std::runtime_error("unreachable unit in cache_max_size");
 }
 
 
-// تضمین وجود جدول meta
+// check meta table
 static void ensure_meta_table(sqlite3* db) {
     char* err = nullptr;
     const char* sql =
@@ -95,7 +104,7 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
         return false;
     }
 
-    // --- watch_mode (اجباری: path | mount)
+    // --- watch_mode path or mount
     if (j.contains("watch_mode") && j["watch_mode"].is_string()) {
         watch_mode_ = toLower(j["watch_mode"].get<std::string>());
         if (watch_mode_ != "path" && watch_mode_ != "mount") {
@@ -107,7 +116,7 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
         return false;
     }
 
-    // --- watch_target (اجباری: رشته غیر خالی)
+    // --- watch_target
     if (j.contains("watch_target") && j["watch_target"].is_string()) {
         watch_target_ = j["watch_target"].get<std::string>();
         if (watch_target_.empty()) {
@@ -119,7 +128,6 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
         return false;
     }
 
-    // --- patterns (اختیاری)
     patterns.clear();
     pattern_strings_.clear();
     auto add_pat = [&](const std::string& pat) {
@@ -143,13 +151,12 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
         }
     }
 
-    // --- cache_max_size (اجباری / فقط KB یا MB)
     max_cache_bytes_ = 0;
     if (j.contains("cache_max_size") && j["cache_max_size"].is_string()) {
         try {
             max_cache_bytes_ = parse_size_kb_mb(j["cache_max_size"].get<std::string>());
         } catch (...) {
-            max_cache_bytes_ = 0; // نامعتبر → بعداً validate رد می‌کند
+            max_cache_bytes_ = 0; 
         }
     }
 
@@ -168,9 +175,8 @@ bool ConfigManager::matches(const std::string& text) const {
 // return number of patterns
 size_t ConfigManager::patternCount() const { return patterns.size(); }
 
-// Get canonical rules json for hash calculation (سفارش: فقط الگوها)
+// Get canonical rules json for hash calculation
 std::string ConfigManager::canonicalRulesJson() const {
-    // ترتیب مهم نیست → مرتب‌سازی
     std::vector<std::string> sorted = pattern_strings_;
     std::sort(sorted.begin(), sorted.end());
     json c;
@@ -191,7 +197,7 @@ std::string ConfigManager::hashCanonical(const std::string& data) {
     }
     return h;
 #else
-    // FNV-1a 64 (برای نسخه‌بندی کافی است؛ امنیتی نیست)
+
     const uint64_t FNV_OFFSET = 1469598103934665603ULL, FNV_PRIME = 1099511628211ULL;
     uint64_t hash = FNV_OFFSET;
     for (unsigned char c : data) {
@@ -221,7 +227,13 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
 
     // 1 compute current canonical hash
     const std::string canonical = canonicalRulesJson();
-    const std::string cur_hash  = hashCanonical(canonical);
+    const std::string tgt_norm  = normalizePath(getWatchTarget());
+
+    std::string mat = canonical
+                    + "\nwatch_mode="   + getWatchMode()
+                    + "\nwatch_target=" + tgt_norm;
+    const std::string cur_hash  = hashCanonical(mat);
+
 
     // 2 read old hash & version
     std::string last_hash;
