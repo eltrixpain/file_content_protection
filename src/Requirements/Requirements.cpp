@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 
 INSERT OR IGNORE INTO meta(key, value) VALUES ('ruleset_version','1');
-INSERT OR IGNORE INTO meta(key, value) VALUES ('ruleset_hash','');
+INSERT OR IGNORE INTO meta(key, value) VALUES ('scope_hash','');
+INSERT OR IGNORE INTO meta(key, value) VALUES ('patterns_hash','');
 )SQL";
 
 
@@ -148,10 +149,10 @@ bool Requirements::initCacheDb(const std::string& db_path, StartupResult& out) {
     sqlite3_wal_autocheckpoint(raw, 512);
 
 
-    out.db.reset(raw); // حالا بسپار به unique_ptr
+    out.db.reset(raw); 
 
     char* err = nullptr;
-    rc = sqlite3_exec(out.db.get(), kSchemaSQL /* بدون PRAGMA ها */, nullptr, nullptr, &err);
+    rc = sqlite3_exec(out.db.get(), kSchemaSQL, nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
         out.error = std::string("[cache] schema exec failed: ") + (err ? err : "");
         out.logs.push_back(out.error);

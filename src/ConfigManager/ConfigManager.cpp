@@ -219,32 +219,42 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
     if (!db) return false;
 
     try {
-        ensure_meta_table(db);
+        ensure_meta_table(db); // must ensure keys: scope_hash, patterns_hash, ruleset_version
     } catch (const std::exception& e) {
         std::cerr << "[ConfigManager] " << e.what() << "\n";
         return false;
     }
 
-    // 1 compute current canonical hash
-    const std::string canonical = canonicalRulesJson();
-    const std::string tgt_norm  = normalizePath(getWatchTarget());
+    // 1) compute current scope & patterns hashes
+    const std::string tgt_norm          = normalizePath(getWatchTarget());
+    const std::string scope_mat         = "watch_mode=" + getWatchMode() + "\nwatch_target=" + tgt_norm;
+    const std::string cur_scope_hash    = hashCanonical(scope_mat);
 
-    std::string mat = canonical
-                    + "\nwatch_mode="   + getWatchMode()
-                    + "\nwatch_target=" + tgt_norm;
-    const std::string cur_hash  = hashCanonical(mat);
+    // canonicalRulesJson() must include only patterns/options (no watch target/mode)
+    const std::string patterns_json     = canonicalRulesJson();
+    const std::string cur_patterns_hash = hashCanonical(patterns_json);
 
-
-    // 2 read old hash & version
-    std::string last_hash;
-    uint64_t last_ver = 0;
+    // 2) read previous hashes & version
+    std::string last_scope_hash;
+    std::string last_patterns_hash;
+    uint64_t    last_ver = 0;
 
     {
         sqlite3_stmt* s = nullptr;
-        if (sqlite3_prepare_v2(db, "SELECT value FROM meta WHERE key='ruleset_hash'", -1, &s, nullptr) == SQLITE_OK) {
+        if (sqlite3_prepare_v2(db, "SELECT value FROM meta WHERE key='scope_hash'", -1, &s, nullptr) == SQLITE_OK) {
             if (sqlite3_step(s) == SQLITE_ROW) {
                 const unsigned char* t = sqlite3_column_text(s, 0);
-                if (t) last_hash = (const char*)t;
+                if (t) last_scope_hash = (const char*)t;
+            }
+            sqlite3_finalize(s);
+        }
+    }
+    {
+        sqlite3_stmt* s = nullptr;
+        if (sqlite3_prepare_v2(db, "SELECT value FROM meta WHERE key='patterns_hash'", -1, &s, nullptr) == SQLITE_OK) {
+            if (sqlite3_step(s) == SQLITE_ROW) {
+                const unsigned char* t = sqlite3_column_text(s, 0);
+                if (t) last_patterns_hash = (const char*)t;
             }
             sqlite3_finalize(s);
         }
@@ -262,55 +272,109 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
 
     if (last_ver == 0) last_ver = 1; // safety seed
 
-    // 3 compare & update (transactional)
-    if (last_hash.empty()) {
-        // first time
+    const bool scope_changed    = (cur_scope_hash    != last_scope_hash);
+    const bool patterns_changed = (cur_patterns_hash != last_patterns_hash);
+
+    // 3) handle first-time init
+    if (last_scope_hash.empty() && last_patterns_hash.empty()) {
         sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
         {
             sqlite3_stmt* u = nullptr;
             sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO meta(key,value) VALUES('ruleset_version',?)", -1, &u, nullptr);
-            std::string v = std::to_string(last_ver);
+            const std::string v = std::to_string(last_ver);
             sqlite3_bind_text(u, 1, v.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_step(u); sqlite3_finalize(u);
         }
         {
             sqlite3_stmt* u = nullptr;
-            sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO meta(key,value) VALUES('ruleset_hash',?)", -1, &u, nullptr);
-            sqlite3_bind_text(u, 1, cur_hash.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO meta(key,value) VALUES('scope_hash',?)", -1, &u, nullptr);
+            sqlite3_bind_text(u, 1, cur_scope_hash.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(u); sqlite3_finalize(u);
+        }
+        {
+            sqlite3_stmt* u = nullptr;
+            sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO meta(key,value) VALUES('patterns_hash',?)", -1, &u, nullptr);
+            sqlite3_bind_text(u, 1, cur_patterns_hash.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_step(u); sqlite3_finalize(u);
         }
         sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr);
+
         ruleset_version_ = last_ver;
-        ruleset_hash_    = cur_hash;
+        // no ruleset_hash_ anymore
+        #ifdef DEBUG
+        std::cerr << "[ruleset] initialized. version=" << ruleset_version_
+                  << " scope_changed=false patterns_changed=false\n";
+        #endif
         return true;
     }
 
-    if (cur_hash == last_hash) {
-        // unchanged
+    // 4) unchanged
+    if (!scope_changed && !patterns_changed) {
         ruleset_version_ = last_ver;
-        ruleset_hash_    = last_hash;
+        #ifdef DEBUG
+        std::cerr << "[ruleset] no change. version=" << ruleset_version_ << "\n";
+        #endif
         return true;
     }
 
-    // changed → bump
-    uint64_t new_ver = last_ver + 1;
-    sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
-    {
-        sqlite3_stmt* u = nullptr;
-        sqlite3_prepare_v2(db, "UPDATE meta SET value=? WHERE key='ruleset_version'", -1, &u, nullptr);
-        std::string v = std::to_string(new_ver);
-        sqlite3_bind_text(u, 1, v.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_step(u); sqlite3_finalize(u);
-    }
-    {
-        sqlite3_stmt* u = nullptr;
-        sqlite3_prepare_v2(db, "UPDATE meta SET value=? WHERE key='ruleset_hash'", -1, &u, nullptr);
-        sqlite3_bind_text(u, 1, cur_hash.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_step(u); sqlite3_finalize(u);
-    }
-    sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr);
+    // 5) changed cases (split into two clear branches)
 
-    ruleset_version_ = new_ver;
-    ruleset_hash_    = cur_hash;
-    return true;
+    // Branch A: scope changed OR both changed => treat as full change
+    if (scope_changed) {
+        const uint64_t new_ver = last_ver + 1;
+        sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
+        {
+            sqlite3_stmt* u = nullptr;
+            sqlite3_prepare_v2(db, "UPDATE meta SET value=? WHERE key='ruleset_version'", -1, &u, nullptr);
+            const std::string v = std::to_string(new_ver);
+            sqlite3_bind_text(u, 1, v.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(u); sqlite3_finalize(u);
+        }
+        {
+            sqlite3_stmt* u = nullptr;
+            sqlite3_prepare_v2(db, "UPDATE meta SET value=? WHERE key='scope_hash'", -1, &u, nullptr);
+            sqlite3_bind_text(u, 1, cur_scope_hash.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(u); sqlite3_finalize(u);
+        }
+        {
+            sqlite3_stmt* u = nullptr;
+            sqlite3_prepare_v2(db, "UPDATE meta SET value=? WHERE key='patterns_hash'", -1, &u, nullptr);
+            sqlite3_bind_text(u, 1, cur_patterns_hash.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(u); sqlite3_finalize(u);
+        }
+        sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr);
+
+        ruleset_version_ = new_ver;
+        #ifdef DEBUG
+        std::cerr << "[ruleset] scope changed (or both). bumped version to " << ruleset_version_ << "\n";
+        #endif
+        return true;
+    }
+
+    // Branch B: only patterns changed => lighter path (still bump version)
+    {
+        const uint64_t new_ver = last_ver + 1;
+        sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
+        {
+            sqlite3_stmt* u = nullptr;
+            sqlite3_prepare_v2(db, "UPDATE meta SET value=? WHERE key='ruleset_version'", -1, &u, nullptr);
+            const std::string v = std::to_string(new_ver);
+            sqlite3_bind_text(u, 1, v.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(u); sqlite3_finalize(u);
+        }
+        {
+            // update only patterns_hash; scope_hash stays the same
+            sqlite3_stmt* u = nullptr;
+            sqlite3_prepare_v2(db, "UPDATE meta SET value=? WHERE key='patterns_hash'", -1, &u, nullptr);
+            sqlite3_bind_text(u, 1, cur_patterns_hash.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(u); sqlite3_finalize(u);
+        }
+        sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr);
+
+        ruleset_version_ = new_ver;
+        #ifdef DEBUG
+        std::cerr << "[ruleset] patterns changed (scope unchanged). bumped version to " << ruleset_version_ << "\n";
+        #endif
+        return true;
+    }
 }

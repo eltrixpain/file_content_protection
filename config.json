@@ -1,6 +1,6 @@
 {
   "watch_mode": "path",
   "watch_target": "/home/remnux/Desktop/test_folder/",
-  "patterns": ["password\\s*=\\s*.*", "asndifnasfiasndfinnsaid"],
+  "patterns": ["password\\s*=\\s*.*", "asndifnasfiasndfasdfinnsai121d"],
   "cache_max_size": "5KB"
 }

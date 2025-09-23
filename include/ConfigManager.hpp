@@ -31,7 +31,6 @@ private:
     std::vector<std::regex> patterns;
     std::vector<std::string> pattern_strings_;
     uint64_t ruleset_version_ = 0;
-    std::string ruleset_hash_;
     static uint64_t parse_size_kb_mb(const std::string& s);
     uint64_t max_cache_bytes_ = 0;
 };
