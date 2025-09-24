@@ -198,8 +198,8 @@
     if (!db_) return false;
 
     const char* sql =
-        "SELECT mtime_ns, size, ruleset_version, decision "
-        "FROM cache_entries WHERE dev=? AND ino=?;";
+    "SELECT mtime_ns, size, ruleset_version, decision, ctime_ns "
+    "FROM cache_entries WHERE dev=? AND ino=?;";
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -216,19 +216,24 @@
         const long long row_size        = sqlite3_column_int64(stmt, 1);
         const long long row_ruleset_ver = sqlite3_column_int64(stmt, 2);
         const int       row_decision    = sqlite3_column_int(stmt,   3);
+        const long long row_ctime_ns    = sqlite3_column_int64(stmt, 4);
 
         const long long cur_mtime_ns =
             static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec;
+        const long long cur_ctime_ns =
+            static_cast<long long>(st.st_ctim.tv_sec) * 1000000000LL + st.st_ctim.tv_nsec;
 
         if (row_ruleset_ver == static_cast<long long>(ruleset_version) &&
             row_mtime_ns    == cur_mtime_ns &&
-            row_size        == static_cast<long long>(st.st_size)) {
+            row_size        == static_cast<long long>(st.st_size) &&
+            row_ctime_ns    == cur_ctime_ns) {
             decision = row_decision;
             hit = true;
         }
     }
 
     (void)sqlite3_finalize(stmt);
+
 
     if (hit) {
         const char* upd =
@@ -251,67 +256,70 @@
 
 
     // put new record into the hash table
-    void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int decision ,uint64_t max_bytes) {
-    if (!db_) return;
+    void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int decision, uint64_t max_bytes) {
+        if (!db_) return;
 
-   #ifdef DEBUG
-    std::cout << "[cache] put: dev=" << st.st_dev
-              << " ino=" << st.st_ino
-              << " size=" << st.st_size
-              << " mtime=" << st.st_mtim.tv_sec
-              << " ver=" << ruleset_version
-              << " decision=" << decision
-              << std::endl;
-    #endif
-
-    if (!check_cache_capacity(db_, max_bytes)){
-        #ifdef LFU_SIZE
-        std::cout << "\033[31m"
-          << "[cache][evict] Cache full. Removing based on f(hit_count , size) item"
-          << "\033[0m" << std::endl;
-        evict_lfu_size(db_ ,10 , 5 , 1000);
-        #endif
-        
-
-        #ifdef LRU
-        std::cout << "\033[31m"
-          << "[cache][evict] Cache full. Removing least recently used item"
-          << "\033[0m" << std::endl;
-        evict_lru(db_,10);
+        #ifdef DEBUG
+        std::cout << "[cache] put: dev=" << st.st_dev
+                << " ino=" << st.st_ino
+                << " size=" << st.st_size
+                << " mtime=" << st.st_mtim.tv_sec
+                << " ctime=" << st.st_ctim.tv_sec
+                << " ver=" << ruleset_version
+                << " decision=" << decision
+                << std::endl;
         #endif
 
+        if (!check_cache_capacity(db_, max_bytes)) {
+            #ifdef LFU_SIZE
+            std::cout << "\033[31m"
+                    << "[cache][evict] Cache full. Removing based on f(hit_count , size) item"
+                    << "\033[0m" << std::endl;
+            evict_lfu_size(db_, 10, 5, 1000);
+            #endif
 
-        #ifdef LFU
-        std::cout << "\033[31m"
-          << "[cache][evict] Cache full. Removing least frequently used item"
-          << "\033[0m" << std::endl;
-        evict_lfu(db_,10);
-        #endif
-        
+            #ifdef LRU
+            std::cout << "\033[31m"
+                    << "[cache][evict] Cache full. Removing least recently used item"
+                    << "\033[0m" << std::endl;
+            evict_lru(db_, 10);
+            #endif
+
+            #ifdef LFU
+            std::cout << "\033[31m"
+                    << "[cache][evict] Cache full. Removing least frequently used item"
+                    << "\033[0m" << std::endl;
+            evict_lfu(db_, 10);
+            #endif
+        }
+
+        const char* sql =
+            "INSERT OR REPLACE INTO cache_entries "
+            "(dev, ino, mtime_ns, ctime_ns, size, ruleset_version, decision, last_access_ts, hit_count) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0);";
+
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            return;
+        }
+
+        const long long mtime_ns =
+            static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec;
+        const long long ctime_ns =
+            static_cast<long long>(st.st_ctim.tv_sec) * 1000000000LL + st.st_ctim.tv_nsec;
+        const long long now = static_cast<long long>(time(nullptr));
+
+        sqlite3_bind_int64(stmt, 1, static_cast<long long>(st.st_dev));
+        sqlite3_bind_int64(stmt, 2, static_cast<long long>(st.st_ino));
+        sqlite3_bind_int64(stmt, 3, mtime_ns);
+        sqlite3_bind_int64(stmt, 4, ctime_ns);
+        sqlite3_bind_int64(stmt, 5, static_cast<long long>(st.st_size));
+        sqlite3_bind_int64(stmt, 6, static_cast<long long>(ruleset_version));
+        sqlite3_bind_int(stmt,   7, decision);
+        sqlite3_bind_int64(stmt, 8, now);
+
+        (void)sqlite3_step(stmt);
+        (void)sqlite3_finalize(stmt);
     }
-    const char* sql =
-        "INSERT OR REPLACE INTO cache_entries "
-        "(dev, ino, mtime_ns, size, ruleset_version, decision, last_access_ts, hit_count) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, 0);";
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        return;
-    }
-
-    const long long mtime_ns =
-        static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec;
-    const long long now = static_cast<long long>(time(nullptr));
-
-    sqlite3_bind_int64(stmt, 1, static_cast<long long>(st.st_dev));
-    sqlite3_bind_int64(stmt, 2, static_cast<long long>(st.st_ino));
-    sqlite3_bind_int64(stmt, 3, mtime_ns);
-    sqlite3_bind_int64(stmt, 4, static_cast<long long>(st.st_size));
-    sqlite3_bind_int64(stmt, 5, static_cast<long long>(ruleset_version));
-    sqlite3_bind_int(stmt,   6, decision);
-    sqlite3_bind_int64(stmt, 7, now);
-
-    (void)sqlite3_step(stmt);
-    (void)sqlite3_finalize(stmt);
-    }
 

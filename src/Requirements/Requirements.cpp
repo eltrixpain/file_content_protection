@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS cache_entries (
   dev             INTEGER NOT NULL,
   ino             INTEGER NOT NULL,
   mtime_ns        INTEGER NOT NULL,
+  ctime_ns        INTEGER NOT NULL,
   size            INTEGER NOT NULL,
   ruleset_version INTEGER NOT NULL,
   decision        INTEGER NOT NULL,
