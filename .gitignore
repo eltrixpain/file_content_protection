@@ -14,6 +14,8 @@ logs/
 
 idea/
 
+statistical_result/
+
 # system/editor cruft
 *.swp
 *.swo

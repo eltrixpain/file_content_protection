@@ -206,6 +206,7 @@ StartupResult Requirements::run(const std::string& config_path,
     // 1) dirs
     ensureDir("logs", res);
     ensureDir("cache", res);
+    ensureDir("statistical_result", res);
 
     // 2) config load + validate
     if (!loadConfig(config_path, res)) {
