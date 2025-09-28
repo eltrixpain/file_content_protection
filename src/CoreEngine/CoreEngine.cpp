@@ -46,7 +46,7 @@ auto report_every = [](uint64_t n) {
 };
 
 
-void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
+void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) {
     // [Fanotify registration]
     // get data for register fanotify from config file
     const std::string mode   = config.getWatchMode();
@@ -209,4 +209,8 @@ void start_core_engine(const ConfigManager& config, sqlite3* cache_db) {
             }
         }
     }
+}
+
+void start_core_engine_statistic() {
+    std::cout << "[CoreEngine] start statistic mode" << std::endl;
 }
