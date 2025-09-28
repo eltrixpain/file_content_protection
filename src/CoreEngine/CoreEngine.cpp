@@ -4,6 +4,7 @@
 #include "ConfigManager.hpp" 
 #include "RuleEvaluator.hpp"
 #include "CacheManager.hpp"
+#include "StatisticStore.hpp"
 
 #include <iostream>
 #include <fcntl.h>
@@ -211,6 +212,14 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
     }
 }
 
+static StatisticStore g_stats;
+
+static inline int64_t now_ns() {
+    struct timespec ts{};
+    clock_gettime(CLOCK_REALTIME, &ts); // wall-clock for reporting
+    return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
+}
+
 void start_core_engine_statistic() {
     int fan_fd = fanotify_init(FAN_CLASS_NOTIF | FAN_CLOEXEC | FAN_NONBLOCK,
                                O_RDONLY | O_LARGEFILE);
@@ -250,23 +259,53 @@ void start_core_engine_statistic() {
             }
 
             if (metadata->mask & FAN_OPEN) {
-                pid_t pid = metadata->pid;
+                // event timestamp
+                const int64_t ts = now_ns();
 
-                // resolve path from event fd
-                char fd_link[64];
-                snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
-                char path_buf[512];
-                ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
-                if (n >= 0) {
-                    path_buf[n] = '\0';
-                    std::cout << "[stat] OPEN pid=" << pid
-                              << " path=" << path_buf << std::endl;
+                // stat the supplied fd to get (dev, ino, size)
+                struct stat st{};
+                if (fstat(metadata->fd, &st) == 0) {
+                    FileKey key{ (uint64_t)st.st_dev, (uint64_t)st.st_ino };
+                    uint64_t fsize = (uint64_t)st.st_size;
+
+                    // 1) update access.open_hits
+                    g_stats.access.open_hits[key] += 1; // increment open count
+
+                    // 2) update sizes.sizes (store/refresh current size)
+                    g_stats.sizes.sizes[key] = fsize;
+
+                    // 3) append to trace.events
+                    g_stats.trace.events.push_back(TraceEvent{
+                        ts, key, fsize, OpType::Open
+                    });
+
+                    // debug print (path is just for visibility)
+                    char fd_link[64];
+                    snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
+                    char path_buf[512];
+                    ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
+                    if (n >= 0) {
+                        path_buf[n] = '\0';
+                        std::cout << "[stat] OPEN dev=" << st.st_dev
+                                  << " ino=" << st.st_ino
+                                  << " size=" << st.st_size
+                                  << " path=" << path_buf
+                                  << " hits=" << g_stats.access.open_hits[key]
+                                  << std::endl;
+                    } else {
+                        std::cout << "[stat] OPEN dev=" << st.st_dev
+                                  << " ino=" << st.st_ino
+                                  << " size=" << st.st_size
+                                  << " path=?"
+                                  << " hits=" << g_stats.access.open_hits[key]
+                                  << std::endl;
+                    }
                 } else {
-                    std::cout << "[stat] OPEN pid=" << pid
-                              << " path=? (readlink failed)" << std::endl;
+                    std::cout << "[stat] OPEN (fstat failed)\n";
                 }
 
-                close(metadata->fd); // always close the supplied FD
+                // always close the supplied FD
+                close(metadata->fd);
             } else {
                 if (metadata->fd >= 0) close(metadata->fd);
             }
