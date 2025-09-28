@@ -212,5 +212,66 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
 }
 
 void start_core_engine_statistic() {
-    std::cout << "[CoreEngine] start statistic mode" << std::endl;
+    int fan_fd = fanotify_init(FAN_CLASS_NOTIF | FAN_CLOEXEC | FAN_NONBLOCK,
+                               O_RDONLY | O_LARGEFILE);
+    if (fan_fd == -1) {
+        perror("fanotify_init");
+        return;
+    }
+
+    uint64_t mask  = FAN_OPEN;                   // only OPEN events
+    uint64_t flags = FAN_MARK_ADD | FAN_MARK_MOUNT;
+
+    if (fanotify_mark(fan_fd, flags, mask, AT_FDCWD, "/home") == -1) {
+        perror("fanotify_mark");
+        close(fan_fd);
+        return;
+    }
+
+    std::cout << "[CoreEngine] statistic: listening for OPEN on /home (mount)\n";
+
+    char buffer[4096];
+    while (true) {
+        struct pollfd pfd { fan_fd, POLLIN, 0 };
+        int pret = poll(&pfd, 1, 1000); // 1s timeout to avoid busy loop
+        if (pret <= 0) continue;
+
+        ssize_t len = read(fan_fd, buffer, sizeof(buffer));
+        if (len <= 0) continue;
+
+        struct fanotify_event_metadata* metadata =
+            (struct fanotify_event_metadata*)buffer;
+
+        while (FAN_EVENT_OK(metadata, len)) {
+            if (metadata->vers != FANOTIFY_METADATA_VERSION) {
+                std::cerr << "[stat] fanotify version mismatch\n";
+                close(fan_fd);
+                return;
+            }
+
+            if (metadata->mask & FAN_OPEN) {
+                pid_t pid = metadata->pid;
+
+                // resolve path from event fd
+                char fd_link[64];
+                snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
+                char path_buf[512];
+                ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
+                if (n >= 0) {
+                    path_buf[n] = '\0';
+                    std::cout << "[stat] OPEN pid=" << pid
+                              << " path=" << path_buf << std::endl;
+                } else {
+                    std::cout << "[stat] OPEN pid=" << pid
+                              << " path=? (readlink failed)" << std::endl;
+                }
+
+                close(metadata->fd); // always close the supplied FD
+            } else {
+                if (metadata->fd >= 0) close(metadata->fd);
+            }
+
+            metadata = FAN_EVENT_NEXT(metadata, len);
+        }
+    }
 }
