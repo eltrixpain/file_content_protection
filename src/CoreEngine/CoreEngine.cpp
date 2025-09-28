@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <chrono>
 #include <fstream>
+#include <filesystem>
 
 
 
@@ -211,6 +212,7 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
         }
     }
 }
+namespace fs = std::filesystem;
 
 static StatisticStore g_stats;
 
@@ -220,7 +222,75 @@ static inline int64_t now_ns() {
     return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
 }
 
+
+// CSV dump: size distribution per file
+// Columns: dev,ino,size_bytes
+static void dump_size_distribution_csv(std::ostream& os) {
+    os << "dev,ino,size_bytes\n";
+    for (const auto& [key, sz] : g_stats.sizes.sizes) {
+        os << key.dev << ',' << key.ino << ',' << sz << '\n';
+    }
+}
+
+// CSV dump: access distribution per file
+// Columns: dev,ino,open_hits
+static void dump_access_distribution_csv(std::ostream& os) {
+    os << "dev,ino,open_hits\n";
+    for (const auto& [key, hits] : g_stats.access.open_hits) {
+        os << key.dev << ',' << key.ino << ',' << hits << '\n';
+    }
+}
+
+
+// Scan /home recursively and populate sizes distribution
+// Fills: g_stats.sizes.sizes[key] = file_size
+static void pre_scan_home_sizes(const std::string& root_path) {
+    std::error_code ec;
+    uint64_t scanned = 0;
+    std::cout << "[stat] pre-scan: scanning " << root_path << " ...\n";
+
+    for (fs::recursive_directory_iterator it(root_path, fs::directory_options::skip_permission_denied, ec);
+         it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) {
+            // skip entries we cannot access
+            ec.clear();
+            continue;
+        }
+        const fs::directory_entry& de = *it;
+        // only regular files
+        if (!de.is_regular_file(ec) || ec) {
+            if (ec) ec.clear();
+            continue;
+        }
+        // obtain native path and stat to get dev/ino/size (stat is robust)
+        struct stat st{};
+        if (stat(de.path().c_str(), &st) != 0) {
+            // couldn't stat — skip
+            continue;
+        }
+        FileKey key{ (uint64_t)st.st_dev, (uint64_t)st.st_ino };
+        uint64_t fsize = (uint64_t)st.st_size;
+        // fill sizes map
+        g_stats.sizes.sizes[key] = fsize; // populate size distribution
+        scanned++;
+        #ifdef DEBUG
+        if ((scanned & 0x3FFF) == 0) {
+            std::cout << "[stat] pre-scan: scanned " << scanned << " files...\n";
+        }
+        #endif
+    }
+
+    std::cout << "[stat] pre-scan done, scanned " << scanned << " files, sizes populated.\n";
+}
+
 void start_core_engine_statistic() {
+    // 1) pre-scan /home to build size distribution
+    pre_scan_home_sizes("/home");
+    std::ofstream ofs1("statistical_result/sizes.csv");
+    dump_size_distribution_csv(ofs1);
+    ofs1.close();
+
+    // 2) start fanotify loop to collect access distribution and trace
     int fan_fd = fanotify_init(FAN_CLASS_NOTIF | FAN_CLOEXEC | FAN_NONBLOCK,
                                O_RDONLY | O_LARGEFILE);
     if (fan_fd == -1) {
@@ -271,7 +341,8 @@ void start_core_engine_statistic() {
                     // 1) update access.open_hits
                     g_stats.access.open_hits[key] += 1; // increment open count
 
-                    // 2) update sizes.sizes (store/refresh current size)
+                    // 2) update sizes.sizes (store/refresh current size if changed)
+                    // size map was initially populated by pre-scan; refresh in case of changes
                     g_stats.sizes.sizes[key] = fsize;
 
                     // 3) append to trace.events
