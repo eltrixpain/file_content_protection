@@ -329,48 +329,58 @@ void start_core_engine_statistic() {
             }
 
             if (metadata->mask & FAN_OPEN) {
-                // event timestamp
                 const int64_t ts = now_ns();
 
-                // stat the supplied fd to get (dev, ino, size)
+                // resolve path from fd (needed to ensure it's under /home)
+                char fd_link[64];
+                snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
+                char path_buf[1024];
+                ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
+                bool in_home = false;
+                if (n >= 0) {
+                    path_buf[n] = '\0';
+                    // normalize simple "(deleted)" suffix if present
+                    std::string p = path_buf;
+                    const std::string deleted_suffix = " (deleted)";
+                    if (p.size() > deleted_suffix.size() &&
+                        p.compare(p.size() - deleted_suffix.size(), deleted_suffix.size(), deleted_suffix) == 0) {
+                        p.erase(p.size() - deleted_suffix.size());
+                    }
+                    // check prefix: "/home" or "/home/..."
+                    if (p == "/home" || p.rfind("/home/", 0) == 0) {
+                        in_home = true;
+                    }
+                }
+                // if path could not be resolved or not under /home, skip
+                if (!in_home) {
+                    if (metadata->fd >= 0) close(metadata->fd);
+                    metadata = FAN_EVENT_NEXT(metadata, len);
+                    continue;
+                }
+
+                // stat the supplied fd to get (dev, ino, size) after path filter
                 struct stat st{};
                 if (fstat(metadata->fd, &st) == 0) {
                     FileKey key{ (uint64_t)st.st_dev, (uint64_t)st.st_ino };
                     uint64_t fsize = (uint64_t)st.st_size;
 
-                    // 1) update access.open_hits
-                    g_stats.access.open_hits[key] += 1; // increment open count
+                    // 1) update access distribution
+                    g_stats.access.open_hits[key] += 1;
 
-                    // 2) update sizes.sizes (store/refresh current size if changed)
-                    // size map was initially populated by pre-scan; refresh in case of changes
+                    // 2) refresh size distribution
                     g_stats.sizes.sizes[key] = fsize;
 
-                    // 3) append to trace.events
-                    g_stats.trace.events.push_back(TraceEvent{
-                        ts, key, fsize, OpType::Open
-                    });
+                    // 3) append to trace
+                    g_stats.trace.events.push_back(TraceEvent{ ts, key, fsize, OpType::Open });
 
-                    // debug print (path is just for visibility)
-                    char fd_link[64];
-                    snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
-                    char path_buf[512];
-                    ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
-                    if (n >= 0) {
-                        path_buf[n] = '\0';
-                        std::cout << "[stat] OPEN dev=" << st.st_dev
-                                  << " ino=" << st.st_ino
-                                  << " size=" << st.st_size
-                                  << " path=" << path_buf
-                                  << " hits=" << g_stats.access.open_hits[key]
-                                  << std::endl;
-                    } else {
-                        std::cout << "[stat] OPEN dev=" << st.st_dev
-                                  << " ino=" << st.st_ino
-                                  << " size=" << st.st_size
-                                  << " path=?"
-                                  << " hits=" << g_stats.access.open_hits[key]
-                                  << std::endl;
-                    }
+                    #ifdef DEBUG
+                    std::cout << "[stat] OPEN dev=" << st.st_dev
+                            << " ino=" << st.st_ino
+                            << " size=" << st.st_size
+                            << " path=" << path_buf
+                            << " hits=" << g_stats.access.open_hits[key]
+                            << std::endl;
+                    #endif
                 } else {
                     std::cout << "[stat] OPEN (fstat failed)\n";
                 }
@@ -380,6 +390,7 @@ void start_core_engine_statistic() {
             } else {
                 if (metadata->fd >= 0) close(metadata->fd);
             }
+
 
             metadata = FAN_EVENT_NEXT(metadata, len);
         }

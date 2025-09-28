@@ -1,4 +1,3 @@
-# plot_stats.py
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -41,5 +40,5 @@ def plot_access_distribution(csv_path: str):
 
 if __name__ == "__main__":
     # example usage
-    plot_size_distribution("../sizes.csv")
-    #plot_access_distribution("access.csv")
+    plot_size_distribution("../statistical_result/sizes.csv")
+    #plot_access_distribution("../statistical_result/access.csv")
