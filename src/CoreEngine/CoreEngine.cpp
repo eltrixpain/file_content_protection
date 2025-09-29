@@ -22,11 +22,12 @@
 
 #define BUF_SIZE 4096
 #define REPORT_PER_CYCLE 50
+#define COLOR_GREEN "\033[1;32m"
+#define COLOR_CYAN  "\033[1;36m"
+#define COLOR_RESET "\033[0m"
 
-#include <chrono>
+
 using SteadyClock = std::chrono::steady_clock;
-
-
 static uint64_t decisions = 0;
 static uint64_t hits = 0;
 static uint64_t total_us = 0;     
@@ -289,6 +290,54 @@ static void pre_scan_home_sizes(const std::string& root_path) {
     std::cout << "[stat] pre-scan done, scanned " << scanned << " files, sizes populated.\n";
 }
 
+static uint64_t compute_max_file_size_95(const AccessDistribution& acc,
+                                         const SizeDistribution& sz)
+{
+    std::vector<std::pair<uint64_t, uint64_t>> items;
+    items.reserve(acc.open_hits.size());
+    unsigned __int128 total_hits = 0;
+
+    for (const auto& [key, hits] : acc.open_hits) {
+        auto it = sz.sizes.find(key);
+        if (it == sz.sizes.end()) continue;
+        items.emplace_back(it->second, hits);
+        total_hits += hits;
+    }
+    if (items.empty() || total_hits == 0) return 0;
+
+    std::sort(items.begin(), items.end(),
+              [](auto& a, auto& b){ return a.first < b.first; });
+
+    unsigned __int128 target = (total_hits * 95 + 99) / 100; // ceil(0.95 * total)
+    unsigned __int128 cum = 0;
+    for (const auto& [size, hits] : items) {
+        cum += hits;
+        if (cum >= target) {
+            double coverage = (double)(unsigned long long)cum /
+                              (double)(unsigned long long)total_hits * 100.0;
+            std::cout << COLOR_GREEN
+                      << "[stat] max_file_size_sync_scan = " << size
+                      << " bytes"
+                      << COLOR_RESET << "  "
+                      << COLOR_CYAN << "(covers ~"
+                      << std::fixed << std::setprecision(2)
+                      << coverage << "% of accesses)"
+                      << COLOR_RESET << std::endl;
+            return size;
+        }
+    }
+    std::cout << COLOR_GREEN
+              << "[stat] max_file_size_sync_scan = " << items.back().first
+              << " bytes"
+              << COLOR_RESET << "  "
+              << COLOR_CYAN << "(covers 100% of accesses)"
+              << COLOR_RESET << std::endl;
+
+    return items.back().first;
+}
+
+
+
 void start_core_engine_statistic(const ConfigManager& config) {
     // read test duration (seconds) from config
     const uint64_t duration_sec = config.getStatisticDurationSeconds(); // must exist in ConfigManager
@@ -327,7 +376,8 @@ void start_core_engine_statistic(const ConfigManager& config) {
             std::ofstream ofs2("statistical_result/access.csv");
             dump_access_distribution_csv(ofs2);
             close(fan_fd);
-            std::cout << "[CoreEngine] statistic: duration reached, results saved. exiting.\n";
+            std::cout << "[CoreEngine] statistic: duration reached, results saved. Now calculating optimized parameters...\n";
+            compute_max_file_size_95(g_stats.access, g_stats.sizes);
             return;
         }
 
@@ -413,3 +463,5 @@ void start_core_engine_statistic(const ConfigManager& config) {
         }
     }
 }
+
+
