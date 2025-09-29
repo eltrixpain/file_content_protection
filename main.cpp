@@ -13,7 +13,7 @@ int main(int argc, char** argv) {
 
     //"statistic" mode
     if (argc > 1 && std::string(argv[1]) == "statistic") {
-        start_core_engine_statistic();
+        start_core_engine_statistic(boot.config);
         return 0;
     }
     // blocking mode

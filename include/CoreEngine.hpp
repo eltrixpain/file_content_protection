@@ -8,6 +8,6 @@
 #include "ConfigManager.hpp"
 
 void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db);
-void start_core_engine_statistic();
+void start_core_engine_statistic(const ConfigManager& config);
 
 #endif // CORE_ENGINE_HPP

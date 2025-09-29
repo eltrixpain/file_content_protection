@@ -216,9 +216,15 @@ namespace fs = std::filesystem;
 
 static StatisticStore g_stats;
 
-static inline int64_t now_ns() {
+static inline int64_t now_ns_realtime() {
     struct timespec ts{};
-    clock_gettime(CLOCK_REALTIME, &ts); // wall-clock for reporting
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
+}
+
+static inline int64_t now_ns_monotonic() {
+    struct timespec ts{};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
 }
 
@@ -283,14 +289,17 @@ static void pre_scan_home_sizes(const std::string& root_path) {
     std::cout << "[stat] pre-scan done, scanned " << scanned << " files, sizes populated.\n";
 }
 
-void start_core_engine_statistic() {
-    // 1) pre-scan /home to build size distribution
+void start_core_engine_statistic(const ConfigManager& config) {
+    // read test duration (seconds) from config
+    const uint64_t duration_sec = config.getStatisticDurationSeconds(); // must exist in ConfigManager
+    const int64_t  t_start_ns   = now_ns_monotonic();
+    // 1) pre-scan sizes and write sizes.csv once
     pre_scan_home_sizes("/home");
     std::ofstream ofs1("statistical_result/sizes.csv");
     dump_size_distribution_csv(ofs1);
-    ofs1.close();
+    ofs1.close(); 
 
-    // 2) start fanotify loop to collect access distribution and trace
+    // 2) start fanotify loop (collect access + trace)
     int fan_fd = fanotify_init(FAN_CLASS_NOTIF | FAN_CLOEXEC | FAN_NONBLOCK,
                                O_RDONLY | O_LARGEFILE);
     if (fan_fd == -1) {
@@ -310,9 +319,20 @@ void start_core_engine_statistic() {
     std::cout << "[CoreEngine] statistic: listening for OPEN on /home (mount)\n";
 
     char buffer[4096];
+
     while (true) {
+        // check time budget at loop head
+        const int64_t elapsed_ns = now_ns_monotonic() - t_start_ns;
+        if (duration_sec > 0 && (uint64_t)(elapsed_ns / 1000000000LL) >= duration_sec) {
+            std::ofstream ofs2("statistical_result/access.csv");
+            dump_access_distribution_csv(ofs2);
+            close(fan_fd);
+            std::cout << "[CoreEngine] statistic: duration reached, results saved. exiting.\n";
+            return;
+        }
+
         struct pollfd pfd { fan_fd, POLLIN, 0 };
-        int pret = poll(&pfd, 1, 1000); // 1s timeout to avoid busy loop
+        int pret = poll(&pfd, 1, 1000); // 1s to avoid busy loop
         if (pret <= 0) continue;
 
         ssize_t len = read(fan_fd, buffer, sizeof(buffer));
@@ -329,9 +349,9 @@ void start_core_engine_statistic() {
             }
 
             if (metadata->mask & FAN_OPEN) {
-                const int64_t ts = now_ns();
+                const int64_t ts = now_ns_realtime();
 
-                // resolve path from fd (needed to ensure it's under /home)
+                // resolve path; keep only under /home
                 char fd_link[64];
                 snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
                 char path_buf[1024];
@@ -339,58 +359,55 @@ void start_core_engine_statistic() {
                 bool in_home = false;
                 if (n >= 0) {
                     path_buf[n] = '\0';
-                    // normalize simple "(deleted)" suffix if present
                     std::string p = path_buf;
                     const std::string deleted_suffix = " (deleted)";
                     if (p.size() > deleted_suffix.size() &&
                         p.compare(p.size() - deleted_suffix.size(), deleted_suffix.size(), deleted_suffix) == 0) {
                         p.erase(p.size() - deleted_suffix.size());
                     }
-                    // check prefix: "/home" or "/home/..."
                     if (p == "/home" || p.rfind("/home/", 0) == 0) {
                         in_home = true;
                     }
                 }
-                // if path could not be resolved or not under /home, skip
                 if (!in_home) {
                     if (metadata->fd >= 0) close(metadata->fd);
                     metadata = FAN_EVENT_NEXT(metadata, len);
                     continue;
                 }
 
-                // stat the supplied fd to get (dev, ino, size) after path filter
+                // stat to get (dev, ino, size)
                 struct stat st{};
                 if (fstat(metadata->fd, &st) == 0) {
                     FileKey key{ (uint64_t)st.st_dev, (uint64_t)st.st_ino };
                     uint64_t fsize = (uint64_t)st.st_size;
 
-                    // 1) update access distribution
+                    // update access distribution
                     g_stats.access.open_hits[key] += 1;
 
-                    // 2) refresh size distribution
+                    // refresh size distribution (optional)
                     g_stats.sizes.sizes[key] = fsize;
 
-                    // 3) append to trace
+                    // append to trace
                     g_stats.trace.events.push_back(TraceEvent{ ts, key, fsize, OpType::Open });
 
+                    // restored DEBUG log
                     #ifdef DEBUG
                     std::cout << "[stat] OPEN dev=" << st.st_dev
-                            << " ino=" << st.st_ino
-                            << " size=" << st.st_size
-                            << " path=" << path_buf
-                            << " hits=" << g_stats.access.open_hits[key]
-                            << std::endl;
+                              << " ino=" << st.st_ino
+                              << " size=" << st.st_size
+                              << " path=" << path_buf
+                              << " hits=" << g_stats.access.open_hits[key]
+                              << std::endl;
                     #endif
                 } else {
                     std::cout << "[stat] OPEN (fstat failed)\n";
                 }
 
-                // always close the supplied FD
+                // always close supplied FD
                 close(metadata->fd);
             } else {
                 if (metadata->fd >= 0) close(metadata->fd);
             }
-
 
             metadata = FAN_EVENT_NEXT(metadata, len);
         }

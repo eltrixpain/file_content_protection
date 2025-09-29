@@ -156,9 +156,34 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
         try {
             max_cache_bytes_ = parse_size_kb_mb(j["cache_max_size"].get<std::string>());
         } catch (...) {
-            max_cache_bytes_ = 0; 
+            std::cerr << "[ConfigManager] 'cache_max_size' must be in thie format: 2KB or 10MB\n";
+            return false;
         }
     }
+
+    duration_sec_ = 0;  // reset
+    if (j.contains("statistical") && j["statistical"].is_object()) {
+        const auto& s = j["statistical"];
+        if (s.contains("duration_sec") && s["duration_sec"].is_number_integer()) {
+            try {
+                duration_sec_ = s["duration_sec"].get<uint64_t>();
+                if (duration_sec_ == 0) {
+                    std::cerr << "[ConfigManager] 'statistical.duration_sec' must be > 0\n";
+                    return false;
+                }
+            } catch (...) {
+                std::cerr << "[ConfigManager] 'statistical.duration_sec' must be integer\n";
+                return false;
+            }
+        } else {
+            std::cerr << "[ConfigManager] missing or invalid 'statistical.duration_sec'\n";
+            return false;
+        }
+    } else {
+        std::cerr << "[ConfigManager] missing or invalid 'statistical' object\n";
+        return false;
+    }
+
 
     return true;
 }
