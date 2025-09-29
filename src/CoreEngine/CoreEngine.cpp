@@ -344,9 +344,11 @@ void start_core_engine_statistic(const ConfigManager& config) {
     const int64_t  t_start_ns   = now_ns_monotonic();
     // 1) pre-scan sizes and write sizes.csv once
     pre_scan_home_sizes("/home");
+    #ifdef DEBUG
     std::ofstream ofs1("statistical_result/sizes.csv");
     dump_size_distribution_csv(ofs1);
-    ofs1.close(); 
+    ofs1.close();
+    #endif 
 
     // 2) start fanotify loop (collect access + trace)
     int fan_fd = fanotify_init(FAN_CLASS_NOTIF | FAN_CLOEXEC | FAN_NONBLOCK,
@@ -373,8 +375,11 @@ void start_core_engine_statistic(const ConfigManager& config) {
         // check time budget at loop head
         const int64_t elapsed_ns = now_ns_monotonic() - t_start_ns;
         if (duration_sec > 0 && (uint64_t)(elapsed_ns / 1000000000LL) >= duration_sec) {
+            #ifdef DEBUG
             std::ofstream ofs2("statistical_result/access.csv");
             dump_access_distribution_csv(ofs2);
+            ofs2.close();
+            #endif
             close(fan_fd);
             std::cout << "[CoreEngine] statistic: duration reached, results saved. Now calculating optimized parameters...\n";
             compute_max_file_size_95(g_stats.access, g_stats.sizes);
