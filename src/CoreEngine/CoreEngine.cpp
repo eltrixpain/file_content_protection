@@ -213,6 +213,12 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
         }
     }
 }
+
+
+/*
+statistacl mode -----------> finding optimized configurable option
+*/
+
 namespace fs = std::filesystem;
 
 static StatisticStore g_stats;
@@ -289,6 +295,42 @@ static void pre_scan_home_sizes(const std::string& root_path) {
 
     std::cout << "[stat] pre-scan done, scanned " << scanned << " files, sizes populated.\n";
 }
+
+
+static uint64_t compute_max_file_size_by_count_95(const SizeDistribution& sz)
+{
+    if (sz.sizes.empty()) return 0;
+
+    std::vector<uint64_t> sizes;
+    sizes.reserve(sz.sizes.size());
+    for (const auto& [key, size] : sz.sizes) {
+        sizes.push_back(size);
+    }
+
+    std::sort(sizes.begin(), sizes.end());
+
+    size_t total_files = sizes.size();
+    size_t idx95 = (total_files * 95 + 99) / 100; // ceil(0.95 * total_files)
+
+    if (idx95 == 0) idx95 = 1; 
+    if (idx95 > total_files) idx95 = total_files;
+
+    uint64_t threshold_size = sizes[idx95 - 1]; 
+
+    double coverage = (double)idx95 / (double)total_files * 100.0;
+
+    std::cout << COLOR_GREEN
+              << "[stat] max_file_size_by_count_95 = " << threshold_size
+              << " bytes"
+              << COLOR_RESET << "  "
+              << COLOR_CYAN << "(covers ~"
+              << std::fixed << std::setprecision(2)
+              << coverage << "% of files by count)"
+              << COLOR_RESET << std::endl;
+
+    return threshold_size;
+}
+
 
 static uint64_t compute_max_file_size_95(const AccessDistribution& acc,
                                          const SizeDistribution& sz)
@@ -383,6 +425,7 @@ void start_core_engine_statistic(const ConfigManager& config) {
             close(fan_fd);
             std::cout << "[CoreEngine] statistic: duration reached, results saved. Now calculating optimized parameters...\n";
             compute_max_file_size_95(g_stats.access, g_stats.sizes);
+            compute_max_file_size_by_count_95(g_stats.sizes);
             return;
         }
 
