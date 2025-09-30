@@ -5,6 +5,10 @@
 
 #define LOG_PATH "logs/fileguard.log"
 
+
+// Desc: logger loop to read from pipe and append to log file
+// In: int pipe_read_fd
+// Out: void
 void logger_loop(int pipe_read_fd) {
     char buf[1024];
     // [Main loop of logger thread]

@@ -12,6 +12,10 @@
 
 RuleEvaluator::RuleEvaluator(const ConfigManager& config) : config(config) {}
 
+
+// Desc: evaluate file access against rules and respond via fanotify
+// In: int fan_fd, const fanotify_event_metadata* metadata, int log_pipe_fd, int& out_decision
+// Out: void (writes fanotify response, sets out_decision)
 void RuleEvaluator::handle_event(int fan_fd,
                                  const struct fanotify_event_metadata* metadata,
                                  int log_pipe_fd,
@@ -28,8 +32,6 @@ void RuleEvaluator::handle_event(int fan_fd,
         (void)_wr;
         close(metadata->fd);
     };
-
-    // path (فقط برای دیباگ/لاگ)
     char fd_link[64];
     snprintf(fd_link, sizeof(fd_link), "/proc/self/fd/%d", metadata->fd);
 
@@ -43,32 +45,28 @@ void RuleEvaluator::handle_event(int fan_fd,
         path_buf[sizeof(path_buf)-1] = '\0';
     }
 
-    // اندازه فایل
     struct stat st{};
     if (fstat(metadata->fd, &st) == -1 || st.st_size == 0) {
         respond(true); // allow
         return;
     }
 
-    // خواندن کل فایل (اگر بزرگ است، بهتر است سقف/استریم بگذاری)
     size_t fsz = static_cast<size_t>(st.st_size);
     std::vector<char> buffer(fsz);
     ssize_t done = 0;
     while (static_cast<size_t>(done) < fsz) {
         ssize_t r = pread(metadata->fd, buffer.data() + done, fsz - done, done);
-        if (r <= 0) { // خطای خواندن → اجازه بدهیم
+        if (r <= 0) { 
             respond(true);
             return;
         }
         done += r;
     }
 
-    // تشخیص نوع و استخراج متن
     std::string header(buffer.data(), std::min<size_t>(5, buffer.size()));
     std::string type = ContentParser::detect_type(path_buf, header);
     std::string extracted = ContentParser::extract_text(type,std::string(buffer.data(), buffer.size()),log_pipe_fd);
 
-    // اعمال رول‌ها
     if (config.matches(extracted)) {
         out_decision = 1; // BLOCK
 
@@ -86,6 +84,5 @@ void RuleEvaluator::handle_event(int fan_fd,
         return;
     }
 
-    // اجازه
     respond(true);
 }

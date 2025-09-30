@@ -34,6 +34,10 @@ static uint64_t total_us = 0;
 static uint64_t total_bytes = 0;   
 static uint64_t hit_bytes = 0;   
 
+
+// Desc: periodically print metrics every n decisions
+// In: uint64_t n (report interval)
+// Out: void
 auto report_every = [](uint64_t n) {
     if (decisions % n == 0 && decisions > 0) {
         double avg_ms = (double)total_us / decisions / 1000.0;
@@ -49,6 +53,9 @@ auto report_every = [](uint64_t n) {
 };
 
 
+// Desc: run blocking fanotify loop with logging, cache, and rule evaluation
+// In: const ConfigManager& config, sqlite3* cache_db
+// Out: void
 void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) {
     // [Fanotify registration]
     // get data for register fanotify from config file
@@ -215,20 +222,30 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
 }
 
 
+
+
 /*
-statistacl mode -----------> finding optimized configurable option
+##################################################################
+Statistacl mode -----------> Finding optimized configurable option
+##################################################################
 */
 
 namespace fs = std::filesystem;
 
 static StatisticStore g_stats;
 
+// Desc: get current wall-clock time in nanoseconds
+// In: (none)
+// Out: int64_t (ns since Unix epoch)
 static inline int64_t now_ns_realtime() {
     struct timespec ts{};
     clock_gettime(CLOCK_REALTIME, &ts);
     return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
 }
 
+// Desc: get monotonic clock time in nanoseconds
+// In: (none)
+// Out: int64_t (ns, not affected by clock changes)
 static inline int64_t now_ns_monotonic() {
     struct timespec ts{};
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -236,8 +253,9 @@ static inline int64_t now_ns_monotonic() {
 }
 
 
-// CSV dump: size distribution per file
-// Columns: dev,ino,size_bytes
+// Desc: write CSV of file sizes per (dev, ino)
+// In: std::ostream& os
+// Out: void
 static void dump_size_distribution_csv(std::ostream& os) {
     os << "dev,ino,size_bytes\n";
     for (const auto& [key, sz] : g_stats.sizes.sizes) {
@@ -245,8 +263,9 @@ static void dump_size_distribution_csv(std::ostream& os) {
     }
 }
 
-// CSV dump: access distribution per file
-// Columns: dev,ino,open_hits
+// Desc: write CSV of open-hit counts per (dev, ino)
+// In: std::ostream& os
+// Out: void
 static void dump_access_distribution_csv(std::ostream& os) {
     os << "dev,ino,open_hits\n";
     for (const auto& [key, hits] : g_stats.access.open_hits) {
@@ -255,8 +274,9 @@ static void dump_access_distribution_csv(std::ostream& os) {
 }
 
 
-// Scan /home recursively and populate sizes distribution
-// Fills: g_stats.sizes.sizes[key] = file_size
+// Desc: recursively scan root and record file sizes into g_stats
+// In: const std::string& root_path
+// Out: void
 static void pre_scan_home_sizes(const std::string& root_path) {
     std::error_code ec;
     uint64_t scanned = 0;
@@ -297,6 +317,9 @@ static void pre_scan_home_sizes(const std::string& root_path) {
 }
 
 
+// Desc: compute 95th-percentile size by file count
+// In: const SizeDistribution& sz
+// Out: uint64_t (size threshold in bytes)
 static uint64_t compute_max_file_size_by_count_95(const SizeDistribution& sz)
 {
     if (sz.sizes.empty()) return 0;
@@ -332,6 +355,9 @@ static uint64_t compute_max_file_size_by_count_95(const SizeDistribution& sz)
 }
 
 
+// Desc: compute 95th-percentile size by file count
+// In: const SizeDistribution& sz
+// Out: uint64_t (size threshold in bytes)
 static uint64_t compute_max_file_size_95(const AccessDistribution& acc,
                                          const SizeDistribution& sz)
 {
@@ -380,6 +406,9 @@ static uint64_t compute_max_file_size_95(const AccessDistribution& acc,
 
 
 
+// Desc: run timed fanotify-based stats collection on /home
+// In: const ConfigManager& config
+// Out: void
 void start_core_engine_statistic(const ConfigManager& config) {
     // read test duration (seconds) from config
     const uint64_t duration_sec = config.getStatisticDurationSeconds(); // must exist in ConfigManager

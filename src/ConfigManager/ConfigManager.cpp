@@ -19,6 +19,9 @@ using nlohmann::json;
 #include <openssl/sha.h>
 #endif
 
+// Desc: normalize a filesystem path to canonical form
+// In: const std::string& path
+// Out: std::string (normalized path)
 static std::string normalizePath(const std::string& path) {
     namespace fs = std::filesystem;
     try {
@@ -33,16 +36,26 @@ static std::string normalizePath(const std::string& path) {
     }
 }
 
+// Desc: convert string to lowercase
+// In: std::string s
+// Out: std::string (lowercased)
 static inline std::string toLower(std::string s) {
     for (char& c : s) c = (char)std::tolower((unsigned char)c);
     return s;
 }
 
+// Desc: trim leading and trailing spaces inplace
+// In: std::string& t
+// Out: void
 static inline void trim_inplace(std::string& t) {
     t.erase(t.begin(), std::find_if(t.begin(), t.end(), [](unsigned char c){ return !std::isspace(c); }));
     t.erase(std::find_if(t.rbegin(), t.rend(), [](unsigned char c){ return !std::isspace(c); }).base(), t.end());
 }
 
+
+// Desc: parse size string (KB/MB) into bytes
+// In: const std::string& raw
+// Out: uint64_t (bytes); throws on invalid input
 uint64_t ConfigManager::parse_size_kb_mb(const std::string& raw) {
     std::string in = raw;
     trim_inplace(in);
@@ -69,7 +82,9 @@ uint64_t ConfigManager::parse_size_kb_mb(const std::string& raw) {
 }
 
 
-// check meta table
+// Desc: ensure 'meta' table exists in SQLite DB
+// In: sqlite3* db
+// Out: void; throws on SQLite error
 static void ensure_meta_table(sqlite3* db) {
     char* err = nullptr;
     const char* sql =
@@ -85,7 +100,9 @@ static void ensure_meta_table(sqlite3* db) {
 }
 
 
-// load config file from json format and fill the class attribute
+// Desc: load and validate JSON config into ConfigManager
+// In: const std::string& config_path
+// Out: bool (true on success, false on error)
 bool ConfigManager::loadFromFile(const std::string& config_path) {
     std::ifstream file(config_path);
     if (!file.is_open()) {
@@ -189,7 +206,9 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
 }
 
 
-// Check the content against the patterns in config file
+// Desc: test if any configured regex matches the text
+// In: const std::string& text
+// Out: bool (true if matched)
 bool ConfigManager::matches(const std::string& text) const {
     for (const auto& re : patterns) {
         if (std::regex_search(text, re)) return true;
@@ -197,10 +216,15 @@ bool ConfigManager::matches(const std::string& text) const {
     return false;
 }
 
-// return number of patterns
+// Desc: get number of compiled patterns
+// In: (none)
+// Out: size_t (count)
 size_t ConfigManager::patternCount() const { return patterns.size(); }
 
-// Get canonical rules json for hash calculation
+
+// Desc: build canonical JSON of rules (sorted patterns)
+// In: (none)
+// Out: std::string (JSON)
 std::string ConfigManager::canonicalRulesJson() const {
     std::vector<std::string> sorted = pattern_strings_;
     std::sort(sorted.begin(), sorted.end());
@@ -209,7 +233,9 @@ std::string ConfigManager::canonicalRulesJson() const {
     return c.dump();
 }
 
-// hash calculator
+// Desc: hash data into hex (SHA-256 if available, else FNV-based)
+// In: const std::string& data
+// Out: std::string (hex digest)
 std::string ConfigManager::hashCanonical(const std::string& data) {
 #ifdef USE_OPENSSL_SHA256
     unsigned char out[32];
@@ -239,7 +265,9 @@ std::string ConfigManager::hashCanonical(const std::string& data) {
 #endif
 }
 
-// initialize & bump ruleset version if patterns changed
+// Desc: init/bump ruleset version based on scope/pattern changes
+// In: sqlite3* db
+// Out: bool (true on success)
 bool ConfigManager::initRulesetVersion(sqlite3* db) {
     if (!db) return false;
 

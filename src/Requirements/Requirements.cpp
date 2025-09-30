@@ -37,7 +37,9 @@ INSERT OR IGNORE INTO meta(key, value) VALUES ('patterns_hash','');
 
 
 
-// Config log
+// Desc: append a timestamped line to config log file
+// In: const std::string& msg
+// Out: void
 void Requirements::fileLog(const std::string& msg) {
     int fd = ::open("logs/config.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd == -1) return;
@@ -51,13 +53,17 @@ void Requirements::fileLog(const std::string& msg) {
     ::close(fd);
 }
 
-// Create directory if it is not exist
+// Desc: create directory if missing and record status
+// In: const char* path, StartupResult& out
+// Out: void    
 void Requirements::ensureDir(const char* path, StartupResult& out) {
     ::mkdir(path, 0755);
     out.logs.push_back(std::string("[ensureDir] ok: ") + path);
 }
 
-// Parse the config field
+// Desc: load JSON config into StartupResult::config
+// In: const std::string& config_path, StartupResult& out
+// Out: bool (true on success)
 bool Requirements::loadConfig(const std::string& config_path, StartupResult& out) {
     if (!out.config.loadFromFile(config_path)) {
         out.error = "[config] failed to load " + config_path;
@@ -68,7 +74,9 @@ bool Requirements::loadConfig(const std::string& config_path, StartupResult& out
     return true;
 }
 
-// Validate config file and check crusial fields correctness
+// Desc: validate key config fields and permissions
+// In: const ConfigManager& cfg, StartupResult& out
+// Out: bool (true if valid)
 bool Requirements::validateConfig(const ConfigManager& cfg, StartupResult& out) {
     std::string mode = cfg.getWatchMode();
     if (mode != "path" && mode != "mount") {
@@ -132,7 +140,9 @@ bool Requirements::validateConfig(const ConfigManager& cfg, StartupResult& out) 
     return true;
 }
 
-// Create tables in DB
+// Desc: open/init SQLite cache DB and apply schema
+// In: const std::string& db_path, StartupResult& out
+// Out: bool (true on success)
 bool Requirements::initCacheDb(const std::string& db_path, StartupResult& out) {
     sqlite3* raw = nullptr;
     int rc = sqlite3_open_v2(db_path.c_str(), &raw,
@@ -165,7 +175,9 @@ bool Requirements::initCacheDb(const std::string& db_path, StartupResult& out) {
 }
 
 
-// check the rule set version
+// Desc: initialize/bump ruleset version in DB meta
+// In: StartupResult& out
+// Out: bool (true on success)
 bool Requirements::initRulesetVersion(StartupResult& out) {
     if (!out.config.initRulesetVersion(out.db.get())) {
         out.error = "[cache] failed to init ruleset version in meta";
@@ -176,6 +188,10 @@ bool Requirements::initRulesetVersion(StartupResult& out) {
     return true;
 }
 
+
+// Desc: delete cache entries with outdated ruleset_version
+// In: sqlite3* db
+// Out: void
 static void invalidate_to_meta_ruleset(sqlite3* db) {
     if (!db) return;
     char* err = nullptr;
@@ -198,7 +214,9 @@ static void invalidate_to_meta_ruleset(sqlite3* db) {
 
 
 
-
+// Desc: orchestrate startup: dirs, config, DB, ruleset; log results
+// In: const std::string& config_path, const std::string& db_path
+// Out: StartupResult
 StartupResult Requirements::run(const std::string& config_path,
                                 const std::string& db_path) {
     StartupResult res;
