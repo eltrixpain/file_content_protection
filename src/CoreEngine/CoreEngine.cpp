@@ -404,14 +404,6 @@ static uint64_t compute_max_file_size_95(const AccessDistribution& acc,
     return items.back().first;
 }
 
-
-struct K95WindowResult {
-    size_t   start_idx;     
-    size_t   end_idx;       
-    uint64_t total_bytes;   
-    uint64_t k95;           
-    double   achieved; 
-};
 static std::vector<K95WindowResult>
 
 // Desc: compute sliding-window k95 metrics over trace events
@@ -503,14 +495,6 @@ compute_k95_over_event_windows(const TraceLog& trace,
 
     return out;
 }
-
-
-struct K95EmaSummary {
-    std::vector<double>   ema_values;  
-    std::vector<uint64_t> target_entries; 
-    double   final_ema {0.0};
-    uint64_t final_target {0};
-};
 
 static K95EmaSummary
 // Desc: smooth k95 results using exponential moving average (EMA)
