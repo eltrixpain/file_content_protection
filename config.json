@@ -4,6 +4,6 @@
   "patterns": ["password\\s*=\\s*.*", "asndifnasfiasndfasdfinnsai121d"],
   "cache_max_size": "5KB",
   "statistical" : {
-        "duration_sec" : 20
+        "duration_sec" : 10
   }
 }
