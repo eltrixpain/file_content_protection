@@ -24,6 +24,7 @@ public:
 
     uint64_t getRulesetVersion() const { return ruleset_version_; }
     uint64_t max_cache_bytes() const { return cache_capacity_bytes_; }
+    uint64_t max_file_size_sync_scan() const { return max_file_size_sync_scan_; }
     uint64_t getStatisticDurationSeconds() const { return duration_sec_; }
 
 private:

@@ -1,4 +1,5 @@
 #include "RuleEvaluator.hpp"
+#include "AsyncScanQueue.hpp"
 #include "ContentParser.hpp"
 #include <iostream>
 #include <unistd.h>
@@ -9,6 +10,7 @@
 #include <vector>
 #include <algorithm>
 #include <sys/stat.h>
+
 
 RuleEvaluator::RuleEvaluator(const ConfigManager& config) : config(config) {}
 
@@ -39,7 +41,9 @@ void RuleEvaluator::handle_event(int fan_fd,
     ssize_t n = readlink(fd_link, path_buf, sizeof(path_buf) - 1);
     if (n >= 0) {
         path_buf[n] = '\0';
-        // std::cout << "path  : " << path_buf << "  access by " << metadata->pid << "\n";
+        #ifdef DEBUG
+        std::cout << "path  : " << path_buf << "  access by " << metadata->pid << "\n";
+        #endif
     } else {
         strncpy(path_buf, "[unknown]", sizeof(path_buf));
         path_buf[sizeof(path_buf)-1] = '\0';
@@ -52,6 +56,17 @@ void RuleEvaluator::handle_event(int fan_fd,
     }
 
     size_t fsz = static_cast<size_t>(st.st_size);
+    uint64_t max_sync = config.max_file_size_sync_scan();
+    if (max_sync > 0 && fsz > max_sync) {
+        // duplicate fd
+        int dupfd = fcntl(metadata->fd, F_DUPFD_CLOEXEC, 3);
+        if (dupfd >= 0) {
+            enqueue_async_scan(dupfd, static_cast<pid_t>(metadata->pid),
+                            static_cast<size_t>(st.st_size));
+        }
+        respond(true);
+        return;
+    }
     std::vector<char> buffer(fsz);
     ssize_t done = 0;
     while (static_cast<size_t>(done) < fsz) {
@@ -64,7 +79,7 @@ void RuleEvaluator::handle_event(int fan_fd,
     }
 
     std::string header(buffer.data(), std::min<size_t>(5, buffer.size()));
-    std::string type = ContentParser::detect_type(path_buf, header);
+    std::string type = ContentParser::detect_type(header);
     std::string extracted = ContentParser::extract_text(type,std::string(buffer.data(), buffer.size()),log_pipe_fd);
 
     if (config.matches(extracted)) {

@@ -22,10 +22,9 @@ static inline void log_poppler_error(const char* msg, int log_pipe_fd) {
 }
 
 // Desc: detect content type from raw bytes ("%PDF-" => "pdf")
-// In: const std::string& /*file_path*/, const std::string& raw_content
+// In: const std::string& raw_content
 // Out: std::string ("pdf" or "text")
-std::string ContentParser::detect_type(const std::string& /*file_path*/,
-                                       const std::string& raw_content) {
+std::string ContentParser::detect_type(const std::string& raw_content) {
     if (raw_content.rfind("%PDF-", 0) == 0) return "pdf";
     return "text";
 }
