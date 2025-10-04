@@ -23,7 +23,7 @@ public:
     bool initRulesetVersion(sqlite3* db);
 
     uint64_t getRulesetVersion() const { return ruleset_version_; }
-    uint64_t max_cache_bytes() const { return max_cache_bytes_; }
+    uint64_t max_cache_bytes() const { return cache_capacity_bytes_; }
     uint64_t getStatisticDurationSeconds() const { return duration_sec_; }
 
 private:
@@ -33,10 +33,11 @@ private:
     std::vector<std::string> pattern_strings_;
     uint64_t ruleset_version_ = 0;
     static uint64_t parse_size_kb_mb(const std::string& s);
-    uint64_t max_cache_bytes_ = 0;
+    uint64_t cache_capacity_bytes_ = 0;
+    uint64_t max_file_size_sync_scan_ = 0;
     //statistical
     uint64_t duration_sec_ = 0;
 };
 
 
-#endif // REGEX_CONFIG_MANAGER_HPP
+#endif 

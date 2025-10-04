@@ -63,14 +63,14 @@ uint64_t ConfigManager::parse_size_kb_mb(const std::string& raw) {
     static const std::regex re(R"(^([0-9]+)\s*([kKmM][bB]?)$)");
     std::smatch m;
     if (!std::regex_match(in, m, re)) {
-        throw std::runtime_error("invalid cache_max_size (only KB/MB allowed): '" + raw + "'");
+        throw std::runtime_error("invalid format (only KB/MB allowed): '" + raw + "'");
     }
 
     uint64_t n = 0;
     try {
         n = std::stoull(m[1].str());
     } catch (...) {
-        throw std::runtime_error("invalid number in cache_max_size: '" + raw + "'");
+        throw std::runtime_error("invalid number : '" + raw + "'");
     }
 
     std::string unit = m[2].str();
@@ -78,7 +78,7 @@ uint64_t ConfigManager::parse_size_kb_mb(const std::string& raw) {
 
     if (unit == "K" || unit == "KB") return n * 1024ULL;
     if (unit == "M" || unit == "MB") return n * 1024ULL * 1024ULL;
-    throw std::runtime_error("unreachable unit in cache_max_size");
+    throw std::runtime_error("unreachable unit");
 }
 
 
@@ -168,12 +168,22 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
         }
     }
 
-    max_cache_bytes_ = 0;
-    if (j.contains("cache_max_size") && j["cache_max_size"].is_string()) {
+    cache_capacity_bytes_ = 0;
+    if (j.contains("cache_capacity_bytes") && j["cache_capacity_bytes"].is_string()) {
         try {
-            max_cache_bytes_ = parse_size_kb_mb(j["cache_max_size"].get<std::string>());
+            cache_capacity_bytes_ = parse_size_kb_mb(j["cache_capacity_bytes"].get<std::string>());
         } catch (...) {
-            std::cerr << "[ConfigManager] 'cache_max_size' must be in thie format: 2KB or 10MB\n";
+            std::cerr << "[ConfigManager] 'cache_capacity_bytes' must be in thie format: 2KB or 10MB\n";
+            return false;
+        }
+    }
+
+    max_file_size_sync_scan_ = 0;
+    if (j.contains("max_file_size_sync_scan") && j["max_file_size_sync_scan"].is_string()) {
+        try {
+            max_file_size_sync_scan_ = parse_size_kb_mb(j["max_file_size_sync_scan"].get<std::string>());
+        } catch (...) {
+            std::cerr << "[ConfigManager] 'max_file_size_sync_scan' must be in thie format: 2KB or 10MB\n";
             return false;
         }
     }

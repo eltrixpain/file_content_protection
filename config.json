@@ -2,7 +2,8 @@
   "watch_mode": "path",
   "watch_target": "/home/remnux/Desktop/test_folder/",
   "patterns": ["password\\s*=\\s*.*", "asndifnasfiasndfasdfinnsai121d"],
-  "cache_max_size": "5KB",
+  "cache_capacity_bytes": "5KB",
+  "max_file_size_sync_scan" : "10MB",
   "statistical" : {
         "duration_sec" : 100
   }
