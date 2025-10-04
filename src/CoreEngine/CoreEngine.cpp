@@ -256,22 +256,26 @@ static inline int64_t now_ns_monotonic() {
 // Desc: write CSV of file sizes per (dev, ino)
 // In: std::ostream& os
 // Out: void
+#ifdef DEBUG
 static void dump_size_distribution_csv(std::ostream& os) {
     os << "dev,ino,size_bytes\n";
     for (const auto& [key, sz] : g_stats.sizes.sizes) {
         os << key.dev << ',' << key.ino << ',' << sz << '\n';
     }
 }
+#endif
 
 // Desc: write CSV of open-hit counts per (dev, ino)
 // In: std::ostream& os
 // Out: void
+#ifdef DEBUG
 static void dump_access_distribution_csv(std::ostream& os) {
     os << "dev,ino,open_hits\n";
     for (const auto& [key, hits] : g_stats.access.open_hits) {
         os << key.dev << ',' << key.ino << ',' << hits << '\n';
     }
 }
+#endif
 
 
 // Desc: recursively scan root and record file sizes into g_stats
