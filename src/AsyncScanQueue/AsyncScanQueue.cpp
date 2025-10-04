@@ -20,14 +20,6 @@ void enqueue_async_scan(int dup_fd, pid_t pid, size_t size) {
     g_cv.notify_one();
 }
 
-bool try_dequeue_async_scan(AsyncScanTask& out) {
-    std::lock_guard<std::mutex> lk(g_mtx);
-    if (g_q.empty()) return false;
-    out = std::move(g_q.front());
-    g_q.pop_front();
-    return true;
-}
-
 bool wait_dequeue_async_scan(AsyncScanTask& out) {
     std::unique_lock<std::mutex> lk(g_mtx);
     g_cv.wait(lk, []{ return g_shutdown || !g_q.empty(); });
