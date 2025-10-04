@@ -61,6 +61,7 @@ void RuleEvaluator::handle_event(int fan_fd,
         // duplicate fd
         int dupfd = fcntl(metadata->fd, F_DUPFD_CLOEXEC, 3);
         if (dupfd >= 0) {
+            out_decision = 2; // UNDECIDED
             enqueue_async_scan(dupfd, static_cast<pid_t>(metadata->pid),
                             static_cast<size_t>(st.st_size));
         }

@@ -19,6 +19,7 @@
 #include <chrono>
 #include <fstream>
 #include <thread>
+#include <functional>
 #include <filesystem>
 #include <math.h>
 
@@ -41,19 +42,21 @@ static uint64_t hit_bytes = 0;
 
 
 
-static void async_worker_loop(int log_write_fd) {
+static void async_worker_loop(int log_write_fd,
+                              const ConfigManager& config,
+                              CacheManager& cache)
+{
     for (;;) {
         AsyncScanTask t;
-        // blocking: فقط این ترد می‌خوابه تا کار برسد یا shutdown شود
-        if (!wait_dequeue_async_scan(t)) {
-            // queue shut down and empty -> exit thread
-            break;
-        }
-        std::cout << "test" << std::endl;
-        ::close(t.fd);
-    }    
-            
+        if (!wait_dequeue_async_scan(t)) break;
+
+        std::cout << "[Background] Done by thread "
+                  << std::this_thread::get_id() << std::endl;
+
+        if (t.fd >= 0) ::close(t.fd);   
+    }
 }
+
 
 
 // Desc: periodically print metrics every n decisions
@@ -112,14 +115,6 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
         _exit(0);
     }
 
-    const unsigned hw = std::thread::hardware_concurrency();
-    const size_t NUM_WORKERS = hw ? std::max(1u, hw/2) : 2u;
-    std::vector<std::thread> workers;
-    workers.reserve(NUM_WORKERS);
-    for (size_t i = 0; i < NUM_WORKERS; ++i) {
-        workers.emplace_back(async_worker_loop, log_pipe[1]);
-    }
-
     // [Initialize and assignment for prepration]
     pid_t self_pid = getpid();
     RuleEvaluator evaluator(config);
@@ -127,6 +122,20 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
     struct fanotify_event_metadata* metadata;
     CacheManager cache(cache_db);
     const uint64_t RULESET_VERSION = config.getRulesetVersion();
+
+    // [Starting thread pool]
+    const unsigned hw = std::thread::hardware_concurrency();
+    const size_t NUM_WORKERS = hw ? std::max(1u, hw/2) : 2u;
+    std::vector<std::thread> workers;
+    workers.reserve(NUM_WORKERS);
+    for (size_t i = 0; i < NUM_WORKERS; ++i) {
+        workers.emplace_back(async_worker_loop,
+                            log_pipe[1],
+                            std::cref(config),  // read 
+                            std::ref(cache));  // read & write
+    }
+
+
 
     //[Start main loop of program]
     std::cout << "[CoreEngine] Watching " << target << " for access events...\n"; 
@@ -217,9 +226,10 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
 
                 // Miss path: evaluate + put
                 evaluator.handle_event(fan_fd, metadata, log_pipe[1], decision);
-                cache.put(st, RULESET_VERSION, decision,config.max_cache_bytes());
-
-                // پایان اندازه‌گیری برای miss:
+                if (decision != 2){
+                    cache.put(st, RULESET_VERSION, decision,config.max_cache_bytes());
+                }
+                // miss path
                 auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                 total_us += dt_us;
                 decisions++;
