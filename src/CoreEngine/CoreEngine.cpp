@@ -5,6 +5,7 @@
 #include "RuleEvaluator.hpp"
 #include "CacheManager.hpp"
 #include "StatisticStore.hpp"
+#include "AsyncScanQueue.hpp"
 
 #include <iostream>
 #include <fcntl.h>
@@ -12,10 +13,12 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <cstring>
+#include <fcntl.h>
 #include <cstdlib>
 #include <unistd.h>
 #include <chrono>
 #include <fstream>
+#include <thread>
 #include <filesystem>
 #include <math.h>
 
@@ -33,6 +36,24 @@ static uint64_t hits = 0;
 static uint64_t total_us = 0;     
 static uint64_t total_bytes = 0;   
 static uint64_t hit_bytes = 0;   
+
+
+
+
+
+static void async_worker_loop(int log_write_fd) {
+    for (;;) {
+        AsyncScanTask t;
+        // blocking: فقط این ترد می‌خوابه تا کار برسد یا shutdown شود
+        if (!wait_dequeue_async_scan(t)) {
+            // queue shut down and empty -> exit thread
+            break;
+        }
+        std::cout << "test" << std::endl;
+        ::close(t.fd);
+    }    
+            
+}
 
 
 // Desc: periodically print metrics every n decisions
@@ -89,6 +110,14 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
         close(log_pipe[1]);
         logger_loop(log_pipe[0]);
         _exit(0);
+    }
+
+    const unsigned hw = std::thread::hardware_concurrency();
+    const size_t NUM_WORKERS = hw ? std::max(1u, hw/2) : 2u;
+    std::vector<std::thread> workers;
+    workers.reserve(NUM_WORKERS);
+    for (size_t i = 0; i < NUM_WORKERS; ++i) {
+        workers.emplace_back(async_worker_loop, log_pipe[1]);
     }
 
     // [Initialize and assignment for prepration]
