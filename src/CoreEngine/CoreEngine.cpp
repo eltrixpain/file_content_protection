@@ -6,6 +6,7 @@
 #include "CacheManager.hpp"
 #include "StatisticStore.hpp"
 #include "AsyncScanQueue.hpp"
+#include "ContentParser.hpp"
 
 #include <iostream>
 #include <fcntl.h>
@@ -50,12 +51,45 @@ static void async_worker_loop(int log_write_fd,
         AsyncScanTask t;
         if (!wait_dequeue_async_scan(t)) break;
 
+        int decision = 0; // 0 = ALLOW (default)
+        struct stat st{};
+        if (fstat(t.fd, &st) == 0 && st.st_size > 0) {
+            size_t fsz = static_cast<size_t>(st.st_size);
+
+            // read whole file
+            std::vector<char> buffer(fsz);
+            ssize_t done = 0;
+            while (static_cast<size_t>(done) < fsz) {
+                ssize_t r = pread(t.fd, buffer.data() + done, fsz - done, done);
+                if (r <= 0) { break; }
+                done += r;
+            }
+
+            if (static_cast<size_t>(done) == fsz) {
+                // detect + extract
+                std::string header(buffer.data(), std::min<size_t>(5, buffer.size()));
+                std::string type = ContentParser::detect_type(header);
+                std::string extracted = ContentParser::extract_text(
+                    type, std::string(buffer.data(), buffer.size()), log_write_fd
+                );
+
+                // match → BLOCK
+                if (config.matches(extracted)) {
+                    decision = 1; // BLOCK
+                }
+            }
+        }
+
+        // cache with the computed decision
+        cache.put(st, config.getRulesetVersion(), decision, config.max_cache_bytes());
+
         std::cout << "[Background] Done by thread "
                   << std::this_thread::get_id() << std::endl;
 
-        if (t.fd >= 0) ::close(t.fd);   
+        if (t.fd >= 0) ::close(t.fd);
     }
 }
+
 
 
 
