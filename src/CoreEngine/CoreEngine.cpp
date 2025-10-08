@@ -23,7 +23,23 @@
 #include <functional>
 #include <filesystem>
 #include <math.h>
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <sched.h>
+#include <errno.h>
+#include <string.h>
 
+
+
+#ifndef IOPRIO_CLASS_SHIFT
+#define IOPRIO_CLASS_SHIFT 13
+#define IOPRIO_CLASS_NONE 0
+#define IOPRIO_CLASS_RT 1
+#define IOPRIO_CLASS_BE 2
+#define IOPRIO_CLASS_IDLE 3
+#define IOPRIO_PRIO_VALUE(class, data) (((class) << IOPRIO_CLASS_SHIFT) | (data))
+#define IOPRIO_WHO_PROCESS 1
+#endif
 
 #define BUF_SIZE 4096
 #define REPORT_PER_CYCLE 50
@@ -42,11 +58,37 @@ static uint64_t hit_bytes = 0;
 
 
 
+static inline pid_t gettid_wrap() {
+    return static_cast<pid_t>(syscall(SYS_gettid));
+}
+static inline int ioprio_set_wrap(int which, int who, int ioprio) {
+    return syscall(SYS_ioprio_set, which, who, ioprio);
+}
+
+static void set_thread_background_mode() {
+    // I/O priority = IDLE 
+    pid_t tid = gettid_wrap();
+    const int io_idle = IOPRIO_PRIO_VALUE(IOPRIO_CLASS_IDLE, 0);
+    if (ioprio_set_wrap(IOPRIO_WHO_PROCESS, tid, io_idle) != 0) {
+        fprintf(stderr, "ioprio_set(IDLE) failed: %s\n", strerror(errno));
+    }
+
+    // Try CPU policy = SCHED_IDLE  
+    struct sched_param sp; memset(&sp, 0, sizeof(sp));
+    if (sched_setscheduler(0, SCHED_IDLE, &sp) != 0) {
+        // fall back to nice = +19
+        if (setpriority(PRIO_PROCESS, tid, 19) != 0) {
+            fprintf(stderr, "setpriority(+19) failed: %s\n", strerror(errno));
+        }
+    }
+}
+
 
 static void async_worker_loop(int log_write_fd,
                               const ConfigManager& config,
                               CacheManager& cache)
 {
+    set_thread_background_mode();
     for (;;) {
         AsyncScanTask t;
         if (!wait_dequeue_async_scan(t)) break;
@@ -82,10 +124,10 @@ static void async_worker_loop(int log_write_fd,
 
         // cache with the computed decision
         cache.put(st, config.getRulesetVersion(), decision, config.max_cache_bytes());
-
+        #ifdef DEBUG
         std::cout << "[Background] Done by thread "
                   << std::this_thread::get_id() << std::endl;
-
+        #endif
         if (t.fd >= 0) ::close(t.fd);
     }
 }
@@ -157,9 +199,8 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
     CacheManager cache(cache_db);
     const uint64_t RULESET_VERSION = config.getRulesetVersion();
 
-    // [Starting thread pool]
-    const unsigned hw = std::thread::hardware_concurrency();
-    const size_t NUM_WORKERS = hw ? std::max(1u, hw/2) : 2u;
+    // [Starting thread pool]   
+    const size_t NUM_WORKERS = 1u;
     std::vector<std::thread> workers;
     workers.reserve(NUM_WORKERS);
     for (size_t i = 0; i < NUM_WORKERS; ++i) {
