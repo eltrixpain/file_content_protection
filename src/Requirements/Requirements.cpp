@@ -17,13 +17,10 @@ CREATE TABLE IF NOT EXISTS cache_entries (
   size            INTEGER NOT NULL,
   ruleset_version INTEGER NOT NULL,
   decision        INTEGER NOT NULL,
-  last_access_ts  INTEGER NOT NULL,
-  hit_count       INTEGER DEFAULT 0,
   PRIMARY KEY (dev, ino)
 );
 
 CREATE INDEX IF NOT EXISTS idx_cache_version ON cache_entries(ruleset_version);
-CREATE INDEX IF NOT EXISTS idx_cache_last_access ON cache_entries(last_access_ts);
 
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,

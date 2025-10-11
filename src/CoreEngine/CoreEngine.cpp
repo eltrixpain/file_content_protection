@@ -4,6 +4,7 @@
 #include "ConfigManager.hpp" 
 #include "RuleEvaluator.hpp"
 #include "CacheL1.hpp"
+#include "CacheL2.hpp"
 #include "StatisticStore.hpp"
 #include "AsyncScanQueue.hpp"
 #include "ContentParser.hpp"
@@ -107,11 +108,12 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
     RuleEvaluator evaluator(config);
     char buffer[BUF_SIZE];
     struct fanotify_event_metadata* metadata;
-    CacheL1 cache(cache_db);
+    CacheL1 l1(cache_db);
+    CacheL2 l2(l1);
     const uint64_t RULESET_VERSION = config.getRulesetVersion();
 
     // [Starting thread pool]   
-    start_async_workers(log_pipe[1], config, cache, /*num_workers=*/1);
+    start_async_workers(log_pipe[1], config, l1, /*num_workers=*/1);
 
 
 
@@ -181,7 +183,7 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
 
 
                 //Cache path
-                if (cache.get(st, RULESET_VERSION, decision)) {
+                if (l2.get(st, RULESET_VERSION, decision)) {
                     hits++;
                     total_bytes += (uint64_t)st.st_size;
                     hit_bytes   += (uint64_t)st.st_size; 
@@ -204,7 +206,7 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
                 // Miss path: evaluate + put
                 evaluator.handle_event(fan_fd, metadata, log_pipe[1], decision);
                 if (decision != 2){
-                    cache.put(st, RULESET_VERSION, decision,config.max_cache_bytes());
+                    l2.put(st, RULESET_VERSION, decision, config.max_cache_bytes());
                 }
                 // miss path
                 auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();

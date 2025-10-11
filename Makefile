@@ -12,6 +12,7 @@ SRC_FILES = \
     src/ContentParser/ContentParser.cpp \
     src/Requirements/Requirements.cpp \
     src/CacheL1/CacheL1.cpp \
+    src/CacheL2/CacheL2.cpp \
     src/AsyncScanQueue/AsyncScanQueue.cpp
 
 LIBS = `pkg-config --cflags --libs poppler-cpp` -lsqlite3 -pthread
