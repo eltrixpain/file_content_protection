@@ -39,17 +39,21 @@ struct StatisticStore {
 };
 
 
-struct K95WindowResult {
+
+struct K95OnlineEvalStep {
     size_t   start_idx;
     size_t   end_idx;
-    uint64_t total_bytes;
-    uint64_t k95;
-    double   achieved;
+    uint64_t total_bytes;         // sum(size*hits) in this test window
+    double   prev_ema;            // EMA before evaluating this window
+    uint64_t prev_target_entries; // ceil(safety_factor * prev_ema)
+    double   achieved_with_prev;  // coverage achieved using prev_target_entries (0..1)
+    bool     pass;                // achieved_with_prev >= coverage
+    uint64_t k95_this_window;     // k95 computed *for this window*
+    double   ema_after;           // EMA after incorporating k95_this_window
 };
 
-struct K95EmaSummary {
-    std::vector<double>   ema_values;
-    std::vector<uint64_t> target_entries;
-    double   final_ema {0.0};
-    uint64_t final_target {0};
+struct K95OnlineEvalSummary {
+    std::vector<K95OnlineEvalStep> steps;
+    double   final_ema = 0.0;
+    size_t   pass_count = 0;
 };

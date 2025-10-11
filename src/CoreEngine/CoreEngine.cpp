@@ -190,7 +190,6 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
                     resp.response = (decision == 0) ? FAN_ALLOW : FAN_DENY;
                     ssize_t _wr = ::write(fan_fd, &resp, sizeof(resp));
                     (void)_wr;
-                    // زمان را جمع بزن:
                     auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                     total_us += dt_us;
                     decisions++;
@@ -361,15 +360,9 @@ static uint64_t compute_max_file_size_by_count_95(const SizeDistribution& sz)
 
     uint64_t threshold_size = sizes[idx95 - 1]; 
 
-    double coverage = (double)idx95 / (double)total_files * 100.0;
-
     std::cout << COLOR_GREEN
-              << "[stat] max_file_size_by_count_95 = " << threshold_size
+              << "[stat] max_file_size based on static analysis = " << threshold_size
               << " bytes"
-              << COLOR_RESET << "  "
-              << COLOR_CYAN << "(covers ~"
-              << std::fixed << std::setprecision(2)
-              << coverage << "% of files by count)"
               << COLOR_RESET << std::endl;
 
     return threshold_size;
@@ -402,15 +395,9 @@ static uint64_t compute_max_file_size_95(const AccessDistribution& acc,
     for (const auto& [size, hits] : items) {
         cum += hits;
         if (cum >= target) {
-            double coverage = (double)(unsigned long long)cum /
-                              (double)(unsigned long long)total_hits * 100.0;
             std::cout << COLOR_GREEN
-                      << "[stat] max_file_size_sync_scan = " << size
+                      << "[stat] max_file_size based on dynamic analysis = " << size
                       << " bytes"
-                      << COLOR_RESET << "  "
-                      << COLOR_CYAN << "(covers ~"
-                      << std::fixed << std::setprecision(2)
-                      << coverage << "% of accesses)"
                       << COLOR_RESET << std::endl;
             return size;
         }
@@ -424,166 +411,6 @@ static uint64_t compute_max_file_size_95(const AccessDistribution& acc,
 
     return items.back().first;
 }
-
-static std::vector<K95WindowResult>
-
-// Desc: compute sliding-window k95 metrics over trace events
-// In: const TraceLog& trace, size_t window_hits, size_t hop_hits, double coverage
-// Out: std::vector<K95WindowResult>
-compute_k95_over_event_windows(const TraceLog& trace,
-                               size_t window_hits = 1000,
-                               size_t hop_hits    = 500,
-                               double coverage    = 0.95)
-{
-    std::vector<K95WindowResult> out;
-    const auto& evs = trace.events;
-    const size_t N = evs.size();
-    if (N == 0 || window_hits == 0) return out;
-    auto pack_key = [](const FileKey& k)->uint64_t {
-        return (uint64_t(k.dev) << 32) ^ uint64_t(k.ino);
-    };
-
-    size_t start = 0;
-    while (start < N) {
-        size_t end = start + window_hits - 1;
-        if (end >= N) {
-            if ((N - start) < hop_hits) break;
-            end = N - 1;
-        }
-        std::unordered_map<uint64_t, std::pair<uint64_t,uint64_t>> per_file;
-        per_file.reserve((end - start + 1) / 4 + 8);
-
-        for (size_t i = start; i <= end; ++i) {
-            const auto& e = evs[i];
-            if (e.op != OpType::Open) continue;
-            uint64_t k = pack_key(e.key);
-            auto& ref = per_file[k];
-            ref.first  += 1;      
-            ref.second  = e.size;  
-        }
-
-        // contribution = size * hits_in_window
-        std::vector<unsigned __int128> contribs;
-        contribs.reserve(per_file.size());
-        unsigned __int128 total_bytes_128 = 0;
-
-        for (const auto& kv : per_file) {
-            const uint64_t hits = kv.second.first;
-            const uint64_t sz   = kv.second.second;
-            unsigned __int128 c = (unsigned __int128)sz * (unsigned __int128)hits;
-            contribs.push_back(c);
-            total_bytes_128 += c;
-        }
-
-        uint64_t k95 = 0;
-        double achieved = 0.0;
-
-        if (!contribs.empty() && total_bytes_128 > 0) {
-            std::sort(contribs.begin(), contribs.end(),
-                      [](auto a, auto b){ return a > b; });
-
-            const unsigned __int128 target =
-                (unsigned __int128)std::ceil((long double)total_bytes_128 * coverage);
-
-            unsigned __int128 cum = 0;
-            size_t k = 0;
-            for (auto c : contribs) {
-                ++k;
-                cum += c;
-                if (cum >= target) {
-                    k95 = (uint64_t)k;
-                    achieved = (double)(unsigned long long)cum /
-                               (double)(unsigned long long)total_bytes_128;
-                    break;
-                }
-            }
-            if (k95 == 0) { k95 = (uint64_t)contribs.size(); achieved = 1.0; }
-        } else {
-            k95 = 0;
-            achieved = 0.0;
-        }
-
-        out.push_back(K95WindowResult{
-            start,
-            end,
-            (uint64_t)(unsigned long long)total_bytes_128,
-            k95,
-            achieved
-        });
-
-        start += hop_hits;
-    }
-
-    return out;
-}
-
-static K95EmaSummary
-// Desc: smooth k95 results using exponential moving average (EMA)
-// In: const std::vector<K95WindowResult>& results, double alpha, double safety_factor
-// Out: K95EmaSummary (EMA values and final target)
-summarize_k95_with_ema(const std::vector<K95WindowResult>& results,
-                       double alpha,
-                       double safety_factor)
-{
-    K95EmaSummary out;
-    out.ema_values.reserve(results.size());
-    out.target_entries.reserve(results.size());
-
-    if (results.empty()) {
-        std::cout << "[k95][ema] no windows to summarize\n";
-        return out;
-    }
-
-    // EMA initialization with first k95
-    double ema = static_cast<double>(results.front().k95);
-
-    for (size_t i = 0; i < results.size(); ++i) {
-        const auto& r = results[i];
-
-        if (i == 0) {
-            // already initialized
-        } else {
-            ema = alpha * static_cast<double>(r.k95) + (1.0 - alpha) * ema;
-        }
-
-        uint64_t target = static_cast<uint64_t>(std::ceil(safety_factor * ema));
-
-        out.ema_values.push_back(ema);
-        out.target_entries.push_back(target);
-
-        #ifdef DEBUG
-        std::cout << "[k95][ema] win[" << r.start_idx << ".." << r.end_idx << "]"
-                  << "  k95=" << r.k95
-                  << "  achieved=" << std::fixed << std::setprecision(3) << r.achieved
-                  << "  EMA=" << std::setprecision(2) << ema
-                  << "  target≈" << target
-                  << "  (safety=" << std::setprecision(2) << safety_factor << ")\n";
-        #endif
-    }
-
-    out.final_ema = ema;
-    out.final_target = out.target_entries.empty() ? 0 : out.target_entries.back();
-    return out;
-}
-
-
-struct K95OnlineEvalStep {
-    size_t   start_idx;
-    size_t   end_idx;
-    uint64_t total_bytes;         // sum(size*hits) in this test window
-    double   prev_ema;            // EMA before evaluating this window
-    uint64_t prev_target_entries; // ceil(safety_factor * prev_ema)
-    double   achieved_with_prev;  // coverage achieved using prev_target_entries (0..1)
-    bool     pass;                // achieved_with_prev >= coverage
-    uint64_t k95_this_window;     // k95 computed *for this window*
-    double   ema_after;           // EMA after incorporating k95_this_window
-};
-
-struct K95OnlineEvalSummary {
-    std::vector<K95OnlineEvalStep> steps;
-    double   final_ema = 0.0;
-    size_t   pass_count = 0;
-};
 
 static K95OnlineEvalSummary test_k95_ema_online(const TraceLog& trace,
                          size_t window_hits,
@@ -657,19 +484,19 @@ static K95OnlineEvalSummary test_k95_ema_online(const TraceLog& trace,
         if (!initialized) {
             ema = k95;
             initialized = true;
-            std::cout << "[STEP " << step_count++ << "] INIT window[" << start << ".." << end << "]  k95=" << k95
-                      << "  EMA=" << ema << std::endl;
+            std::cout << COLOR_CYAN << "[STEP " << step_count++ << "] INIT window[" << start << ".." << end << "]  k95=" << k95
+                      << "  EMA=" << ema << COLOR_RESET << std::endl;
         } else {
             uint64_t target = (uint64_t)std::ceil(safety_factor * ema);
             double achieved = coverage_with_topk(contribs, total, target);
             bool pass = achieved >= coverage;
 
-            std::cout << "[STEP " << step_count++ << "] window[" << start << ".." << end << "]  "
+            std::cout << COLOR_CYAN << "[STEP " << step_count++ << "] window[" << start << ".." << end << "]  "
                        << "prevEMA=" << std::fixed << std::setprecision(2) << ema
                        << "  target=" << target
                        << "  achieved=" << std::setprecision(3) << achieved * 100 << "%  "
                        << (pass ? "PASS" : "FAIL")
-                       << std::endl;
+                       <<  COLOR_RESET << std::endl;
             if (pass) ++pass_count;
 
             ema = alpha * k95 + (1.0 - alpha) * ema;
@@ -677,7 +504,6 @@ static K95OnlineEvalSummary test_k95_ema_online(const TraceLog& trace,
         start += hop_hits;
     }
 
-     std::cout << "Final EMA: " << ema << std::endl;
      out.final_ema = ema;
      out.pass_count = pass_count;
      out.steps.resize(step_count);
@@ -693,13 +519,12 @@ void start_core_engine_statistic(const ConfigManager& config) {
     // read test duration (seconds) from config
     const uint64_t duration_sec = config.getStatisticDurationSeconds(); // must exist in ConfigManager
     const int64_t  t_start_ns   = now_ns_monotonic();
+
     // 1) pre-scan sizes and write sizes.csv once
-    pre_scan_home_sizes("/home");
-    #ifdef DEBUG
-    std::ofstream ofs1("statistical_result/sizes.csv");
-    dump_size_distribution_csv(ofs1);
-    ofs1.close();
-    #endif 
+    // 1) launch pre-scan in background (runs concurrently with tracing)
+     std::thread pre_scan_thr([]{
+         pre_scan_home_sizes("/home"); 
+     });
 
     // 2) start fanotify loop (collect access + trace)
     int fan_fd = fanotify_init(FAN_CLASS_NOTIF | FAN_CLOEXEC | FAN_NONBLOCK,
@@ -726,27 +551,23 @@ void start_core_engine_statistic(const ConfigManager& config) {
         // check time budget at loop head
         const int64_t elapsed_ns = now_ns_monotonic() - t_start_ns;
         if (duration_sec > 0 && (uint64_t)(elapsed_ns / 1000000000LL) >= duration_sec) {
+            if (pre_scan_thr.joinable()) pre_scan_thr.join();
             #ifdef DEBUG
             std::ofstream ofs2("statistical_result/access.csv");
             dump_access_distribution_csv(ofs2);
             ofs2.close();
-            #endif
+
+            std::ofstream ofs1("statistical_result/sizes.csv");
+            dump_size_distribution_csv(ofs1);
+            ofs1.close();
+            #endif 
+
             close(fan_fd);
             std::cout << "[CoreEngine] statistic: duration reached, results saved. Now calculating optimized parameters...\n";
             compute_max_file_size_95(g_stats.access, g_stats.sizes);
             compute_max_file_size_by_count_95(g_stats.sizes);
-            auto wins = compute_k95_over_event_windows(g_stats.trace, /*window_hits=*/500, /*hop_hits=*/250, /*coverage=*/0.95);
             double alpha = 0.10;
             double safety = 1.20;
-
-            auto summary = summarize_k95_with_ema(wins, alpha, safety);
-            std::cout << COLOR_GREEN << "[k95][ema] final_EMA=" << std::fixed << std::setprecision(2) 
-                    << summary.final_ema
-                    << COLOR_RESET 
-                    << COLOR_CYAN
-                    << "  final_target≈" << summary.final_target
-                    << " (entries)\n" << COLOR_RESET;
-
             // === 3) Online EMA evaluation phase ===
             auto eval = test_k95_ema_online(
                 g_stats.trace,
@@ -759,7 +580,7 @@ void start_core_engine_statistic(const ConfigManager& config) {
 
             std::cout << COLOR_GREEN
                     << "[k95][online] evaluated " << eval.steps.size() << " windows, "
-                    << eval.pass_count << " passed (≥95% coverage)\n"
+                    << eval.pass_count << " passed (≥95% coverage)"
                     << "final_ema=" << std::fixed << std::setprecision(2) << eval.final_ema
                     << COLOR_RESET << std::endl;
 
@@ -818,9 +639,6 @@ void start_core_engine_statistic(const ConfigManager& config) {
 
                     // update access distribution
                     g_stats.access.open_hits[key] += 1;
-
-                    // refresh size distribution (optional)
-                    g_stats.sizes.sizes[key] = fsize;
 
                     // append to trace
                     g_stats.trace.events.push_back(TraceEvent{ ts, key, fsize, OpType::Open });
