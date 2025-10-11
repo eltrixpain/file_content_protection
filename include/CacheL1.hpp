@@ -5,9 +5,9 @@
 #include <sqlite3.h>
 #include <iostream>
 
-class CacheManager {
+class CacheL1 {
 public:
-    explicit CacheManager(sqlite3* db) : db_(db) {}  // store db handle
+    explicit CacheL1(sqlite3* db) : db_(db) {}  // store db handle
     bool get(const struct stat& st, uint64_t ruleset_version, int& decision);
     void put(const struct stat& st, uint64_t ruleset_version, int decision , uint64_t max_bytes);
 

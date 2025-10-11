@@ -4,7 +4,7 @@
 #include <deque>
 #include <utility>
 #include "ConfigManager.hpp"
-#include "CacheManager.hpp"
+#include "CacheL1.hpp"
 #include "ContentParser.hpp"
 #include <thread>
 #include <vector>
@@ -118,7 +118,7 @@ static void set_thread_background_mode() {
 // Out: void
 static void async_worker_loop(int log_write_fd,
                               const ConfigManager* config,
-                              CacheManager* cache)
+                              CacheL1* cache)
 {
     set_thread_background_mode();
     for (;;) {
@@ -157,7 +157,7 @@ static void async_worker_loop(int log_write_fd,
 // Out: void
 void start_async_workers(int log_write_fd,
                          const ConfigManager& config,
-                         CacheManager& cache,
+                         CacheL1& cache,
                          size_t num_workers)
 {
     if (g_started.exchange(true)) return; // already started

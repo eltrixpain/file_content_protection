@@ -3,7 +3,7 @@
 #include "Logger.hpp"
 #include "ConfigManager.hpp" 
 #include "RuleEvaluator.hpp"
-#include "CacheManager.hpp"
+#include "CacheL1.hpp"
 #include "StatisticStore.hpp"
 #include "AsyncScanQueue.hpp"
 #include "ContentParser.hpp"
@@ -107,7 +107,7 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
     RuleEvaluator evaluator(config);
     char buffer[BUF_SIZE];
     struct fanotify_event_metadata* metadata;
-    CacheManager cache(cache_db);
+    CacheL1 cache(cache_db);
     const uint64_t RULESET_VERSION = config.getRulesetVersion();
 
     // [Starting thread pool]   

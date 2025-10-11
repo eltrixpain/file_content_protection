@@ -1,5 +1,5 @@
     // === src/CacheManager/CacheManager.cpp ===
-    #include "CacheManager.hpp"
+    #include "CacheL1.hpp"
     #include <ctime>
     #include <iostream>
     #include <sys/stat.h>
@@ -206,7 +206,7 @@
     // Desc: check cache for file and fetch decision if metadata matches
     // In: const struct stat& st, uint64_t ruleset_version, int& decision
     // Out: bool (true=hit, false=miss)
-    bool CacheManager::get(const struct stat& st, uint64_t ruleset_version, int& decision) {
+    bool CacheL1::get(const struct stat& st, uint64_t ruleset_version, int& decision) {
     if (!db_) return false;
 
     const char* sql =
@@ -270,7 +270,7 @@
     // Desc: upsert cache entry; may evict if over capacity
     // In: const struct stat& st, uint64_t ruleset_version, int decision, uint64_t max_bytes
     // Out: void
-    void CacheManager::put(const struct stat& st, uint64_t ruleset_version, int decision, uint64_t max_bytes) {
+    void CacheL1::put(const struct stat& st, uint64_t ruleset_version, int decision, uint64_t max_bytes) {
         if (!db_) return;
 
         #ifdef DEBUG
