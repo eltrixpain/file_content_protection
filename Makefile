@@ -5,6 +5,7 @@ INCLUDE_DIR = include
 SRC_FILES = \
     main.cpp \
     src/CoreEngine/CoreEngine.cpp \
+    src/CoreEngine/CoreEngineStatistic.cpp \
     src/Logger/Logger.cpp \
     src/ConfigManager/ConfigManager.cpp \
     src/RuleEvaluator/RuleEvaluator.cpp \
