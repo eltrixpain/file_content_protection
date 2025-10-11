@@ -566,6 +566,126 @@ summarize_k95_with_ema(const std::vector<K95WindowResult>& results,
     return out;
 }
 
+
+struct K95OnlineEvalStep {
+    size_t   start_idx;
+    size_t   end_idx;
+    uint64_t total_bytes;         // sum(size*hits) in this test window
+    double   prev_ema;            // EMA before evaluating this window
+    uint64_t prev_target_entries; // ceil(safety_factor * prev_ema)
+    double   achieved_with_prev;  // coverage achieved using prev_target_entries (0..1)
+    bool     pass;                // achieved_with_prev >= coverage
+    uint64_t k95_this_window;     // k95 computed *for this window*
+    double   ema_after;           // EMA after incorporating k95_this_window
+};
+
+struct K95OnlineEvalSummary {
+    std::vector<K95OnlineEvalStep> steps;
+    double   final_ema = 0.0;
+    size_t   pass_count = 0;
+};
+
+static K95OnlineEvalSummary test_k95_ema_online(const TraceLog& trace,
+                         size_t window_hits,
+                         size_t hop_hits,
+                         double coverage,
+                         double alpha,
+                         double safety_factor)
+{
+    K95OnlineEvalSummary out;        // summary to return
+    size_t step_count = 0;           // how many windows printed
+    size_t pass_count = 0;           // how many windows passed
+    const auto& evs = trace.events;
+    const size_t N = evs.size();
+    if (N == 0) return out;
+
+    auto pack_key = [](const FileKey& k)->uint64_t {
+        return (uint64_t(k.dev) << 32) ^ uint64_t(k.ino);
+    };
+
+    auto build_contribs = [&](size_t start, size_t end, std::vector<unsigned __int128>& contribs, unsigned __int128& total) {
+        std::unordered_map<uint64_t, std::pair<uint64_t,uint64_t>> per_file;
+        for (size_t i = start; i <= end && i < N; ++i) {
+            const auto& e = evs[i];
+            if (e.op != OpType::Open) continue;
+            auto& ref = per_file[pack_key(e.key)];
+            ref.first += 1;
+            ref.second = e.size;
+        }
+        contribs.clear();
+        total = 0;
+        for (auto& kv : per_file) {
+            unsigned __int128 c = (unsigned __int128)kv.second.first * kv.second.second;
+            contribs.push_back(c);
+            total += c;
+        }
+        std::sort(contribs.begin(), contribs.end(), [](auto a, auto b){ return a > b; });
+    };
+
+    auto compute_k95 = [&](const std::vector<unsigned __int128>& contribs, unsigned __int128 total){
+        if (contribs.empty() || total == 0) return (uint64_t)0;
+        unsigned __int128 target = (unsigned __int128)std::ceil((long double)total * coverage);
+        unsigned __int128 cum = 0;
+        uint64_t k = 0;
+        for (auto c : contribs) {
+            cum += c;
+            ++k;
+            if (cum >= target) return k;
+        }
+        return (uint64_t)contribs.size();
+    };
+
+    auto coverage_with_topk = [&](const std::vector<unsigned __int128>& contribs, unsigned __int128 total, uint64_t k){
+        if (k == 0 || contribs.empty() || total == 0) return 0.0;
+        if (k > contribs.size()) k = contribs.size();
+        unsigned __int128 cum = 0;
+        for (size_t i = 0; i < k; ++i) cum += contribs[i];
+        return (double)cum / (double)total;
+    };
+
+    double ema = 0.0;
+    bool initialized = false;
+    size_t start = 0;
+    std::vector<unsigned __int128> contribs;
+    unsigned __int128 total = 0;
+
+    while (start < N) {
+        size_t end = std::min(start + window_hits, N) - 1;
+        build_contribs(start, end, contribs, total);
+        uint64_t k95 = compute_k95(contribs, total);
+
+        if (!initialized) {
+            ema = k95;
+            initialized = true;
+            std::cout << "[STEP " << step_count++ << "] INIT window[" << start << ".." << end << "]  k95=" << k95
+                      << "  EMA=" << ema << std::endl;
+        } else {
+            uint64_t target = (uint64_t)std::ceil(safety_factor * ema);
+            double achieved = coverage_with_topk(contribs, total, target);
+            bool pass = achieved >= coverage;
+
+            std::cout << "[STEP " << step_count++ << "] window[" << start << ".." << end << "]  "
+                       << "prevEMA=" << std::fixed << std::setprecision(2) << ema
+                       << "  target=" << target
+                       << "  achieved=" << std::setprecision(3) << achieved * 100 << "%  "
+                       << (pass ? "PASS" : "FAIL")
+                       << std::endl;
+            if (pass) ++pass_count;
+
+            ema = alpha * k95 + (1.0 - alpha) * ema;
+        }
+        start += hop_hits;
+    }
+
+     std::cout << "Final EMA: " << ema << std::endl;
+     out.final_ema = ema;
+     out.pass_count = pass_count;
+     out.steps.resize(step_count);
+     return out;
+}
+
+
+
 // Desc: run timed fanotify-based stats collection on /home
 // In: const ConfigManager& config
 // Out: void
@@ -616,7 +736,7 @@ void start_core_engine_statistic(const ConfigManager& config) {
             compute_max_file_size_95(g_stats.access, g_stats.sizes);
             compute_max_file_size_by_count_95(g_stats.sizes);
             auto wins = compute_k95_over_event_windows(g_stats.trace, /*window_hits=*/500, /*hop_hits=*/250, /*coverage=*/0.95);
-            double alpha = 0.30;
+            double alpha = 0.10;
             double safety = 1.20;
 
             auto summary = summarize_k95_with_ema(wins, alpha, safety);
@@ -626,6 +746,23 @@ void start_core_engine_statistic(const ConfigManager& config) {
                     << COLOR_CYAN
                     << "  final_target≈" << summary.final_target
                     << " (entries)\n" << COLOR_RESET;
+
+            // === 3) Online EMA evaluation phase ===
+            auto eval = test_k95_ema_online(
+                g_stats.trace,
+                /*window_hits=*/500,
+                /*hop_hits=*/250,
+                /*coverage=*/0.95,
+                /*alpha=*/alpha,
+                /*safety_factor=*/safety
+            );
+
+            std::cout << COLOR_GREEN
+                    << "[k95][online] evaluated " << eval.steps.size() << " windows, "
+                    << eval.pass_count << " passed (≥95% coverage)\n"
+                    << "final_ema=" << std::fixed << std::setprecision(2) << eval.final_ema
+                    << COLOR_RESET << std::endl;
+
             return;
         }
 
