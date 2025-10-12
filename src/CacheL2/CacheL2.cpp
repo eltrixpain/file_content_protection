@@ -3,6 +3,81 @@
 #include <ctime>
 #include <mutex>
 #include <iostream>
+#include <vector>
+#include <algorithm>
+#include <cmath>
+
+
+#ifdef LFU_SIZE
+void CacheL2::evict_lfu_size(int max_rows_to_evict, int candidate_limit) {
+    if (max_rows_to_evict <= 0) return;
+    if (candidate_limit <= 0) candidate_limit = 256;
+
+    const double tau_seconds = 3600.0;
+    const long long now_sec = static_cast<long long>(std::time(nullptr));
+
+    struct Row {
+        Key key;
+        long long hits;
+        long long sz;
+        long long last_ts;
+        double score;
+    };
+
+    // 1) snapshot candidates ordered by (hit_count ASC, last_access_ts ASC), limited
+    std::vector<Row> rows;
+    {
+        std::shared_lock rlk(mu_);
+        rows.reserve(std::min<size_t>(candidate_limit, map_.size()));
+
+        // Collect all, then partial-sort by (hits, last_ts), then truncate
+        for (const auto& kv : map_) {
+            const Key& k = kv.first;
+            const Entry& e = kv.second;
+            rows.push_back(Row{ k, static_cast<long long>(e.hit_count),
+                                static_cast<long long>(e.size),
+                                static_cast<long long>(e.last_access_ts),
+                                0.0 });
+        }
+    }
+
+    if (rows.empty()) return;
+
+    // Order by hit_count ASC, last_access_ts ASC
+    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b){
+        if (a.hits != b.hits) return a.hits < b.hits;
+        return a.last_ts < b.last_ts;
+    });
+    if (static_cast<int>(rows.size()) > candidate_limit)
+        rows.resize(static_cast<size_t>(candidate_limit));
+
+    // 2) compute LFU size-aware age-decayed score
+    for (auto& r : rows) {
+        const double sbytes = static_cast<double>(r.sz);
+        const double h = static_cast<double>(r.hits);
+        const double age = (now_sec > r.last_ts) ? double(now_sec - r.last_ts) : 0.0;
+        const double eff_hits = h / (1.0 + age / tau_seconds);
+        r.score = eff_hits * sbytes; // score = effective_hits * size
+    }
+
+    // 3) sort by score ASC (evict lowest score first), tie-breaker: older first
+    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b){
+        if (a.score != b.score) return a.score < b.score;
+        return a.last_ts < b.last_ts;
+    });
+
+    if (static_cast<size_t>(max_rows_to_evict) < rows.size())
+        rows.resize(static_cast<size_t>(max_rows_to_evict));
+
+    // 4) erase selected keys
+    {
+        std::unique_lock wlk(mu_);
+        for (const auto& r : rows) {
+            map_.erase(r.key);
+        }
+    }
+}
+#endif
 
 uint64_t CacheL2::sum_cached_file_sizes() const {
     std::shared_lock rlk(mu_);
@@ -58,7 +133,7 @@ bool CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision
         int d = 0;
         if (l1_->get(st, ruleset_version, d)) {
             if (!check_capacity(max_bytes)) {
-                
+                evict_lfu_size(10,  100);
             }
             #ifdef DEBUG
             std::cout << "[L1] Cache hit — served from Level 1" << std::endl;
@@ -92,7 +167,7 @@ void CacheL2::put(const struct stat& st, uint64_t ruleset_version, int decision,
     }
 
     if (!check_capacity(max_bytes)) {
-        return;
+        evict_lfu_size( 10,  100);
     }
 
     const Key k{ static_cast<int64_t>(st.st_dev), static_cast<int64_t>(st.st_ino) };

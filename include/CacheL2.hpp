@@ -34,6 +34,7 @@ public:
 
     bool get(const struct stat& st, uint64_t ruleset_version, int& decision,uint64_t max_bytes);
     void put(const struct stat& st, uint64_t ruleset_version, int decision, uint64_t max_bytes);
+    void evict_lfu_size(int max_rows_to_evict, int candidate_limit);
 
 private:
     static inline int64_t to_ns(time_t s, long ns) {

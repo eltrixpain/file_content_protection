@@ -9,42 +9,6 @@
     #include <cmath>
 
 
-    // Desc: check if cache size in dbstat tables is below limit
-    // In: sqlite3* db, uint64_t max_bytes
-    // Out: bool (true if within limit, false if exceeded)
-    bool check_cache_capacity(sqlite3* db, uint64_t max_bytes) {
-        if (!db) return true;
-        uint64_t live_bytes = 0;
-
-        const char* sql =
-            "SELECT SUM(pgsize - unused) "
-            "FROM dbstat "
-            "WHERE name IN ("
-            "'cache_entries',"
-            "'sqlite_autoindex_cache_entries_1',"
-            "'idx_cache_version',"
-            "'idx_cache_last_access'"
-            ");";
-
-        sqlite3_stmt* stmt = nullptr;
-        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-            if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_type(stmt, 0) != SQLITE_NULL) {
-                live_bytes = static_cast<uint64_t>(sqlite3_column_int64(stmt, 0));
-            }
-            (void)sqlite3_finalize(stmt);
-        }
-
-        if (live_bytes >= max_bytes) {
-            #ifdef DEBUG
-            std::cerr << "[cache] size limit exceeded (dbstat): "
-                    << live_bytes << " >= " << max_bytes << " bytes\n";
-            #endif
-            return false;
-        }
-        return true;
-    }
-
-
     // Desc: evict entries using size-aware LFU (age-decayed) scoring
     // In: sqlite3* db, int max_rows_to_evict, double beta, int candidate_limit
     // Out: void (deletes up to max_rows_to_evict rows)
@@ -283,29 +247,6 @@
                 << " decision=" << decision
                 << std::endl;
         #endif
-
-        if (!check_cache_capacity(db_, max_bytes)) {
-            #ifdef LFU_SIZE
-            std::cout << "\033[31m"
-                    << "[cache][evict] Cache full. Removing based on f(hit_count , size) item"
-                    << "\033[0m" << std::endl;
-            evict_lfu_size(db_, 10, 5, 1000);
-            #endif
-
-            #ifdef LRU
-            std::cout << "\033[31m"
-                    << "[cache][evict] Cache full. Removing least recently used item"
-                    << "\033[0m" << std::endl;
-            evict_lru(db_, 10);
-            #endif
-
-            #ifdef LFU
-            std::cout << "\033[31m"
-                    << "[cache][evict] Cache full. Removing least frequently used item"
-                    << "\033[0m" << std::endl;
-            evict_lfu(db_, 10);
-            #endif
-        }
 
         const char* sql =
             "INSERT OR REPLACE INTO cache_entries "
