@@ -1,8 +1,8 @@
 {
   "watch_mode": "path",
-  "watch_target": "/home/",
+  "watch_target": "/home/matrix/Desktop/university/",
   "patterns": ["password\\s*=\\s*.*", "asndifnasfiasndfasdfinnsai121d"],
-  "cache_capacity_bytes": "5KB",
+  "cache_capacity_bytes": "1MB",
   "max_file_size_sync_scan": "4MB",
   "statistical": {
     "duration_sec": 40

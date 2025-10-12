@@ -183,7 +183,7 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
 
 
                 //Cache path
-                if (l2.get(st, RULESET_VERSION, decision)) {
+                if (l2.get(st, RULESET_VERSION, decision,config.max_cache_bytes())) {
                     hits++;
                     total_bytes += (uint64_t)st.st_size;
                     hit_bytes   += (uint64_t)st.st_size; 

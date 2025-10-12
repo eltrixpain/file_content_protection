@@ -32,13 +32,15 @@ public:
 public:
     explicit CacheL2(CacheL1& l1_ref) : l1_(&l1_ref) {}
 
-    bool get(const struct stat& st, uint64_t ruleset_version, int& decision);
+    bool get(const struct stat& st, uint64_t ruleset_version, int& decision,uint64_t max_bytes);
     void put(const struct stat& st, uint64_t ruleset_version, int decision, uint64_t max_bytes);
 
 private:
     static inline int64_t to_ns(time_t s, long ns) {
         return static_cast<int64_t>(s) * 1000000000LL + static_cast<int64_t>(ns);
     }
+    uint64_t sum_cached_file_sizes() const;
+    bool check_capacity(uint64_t max_bytes)const;
 
 private:
     mutable std::shared_mutex mu_;
