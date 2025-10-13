@@ -448,7 +448,7 @@ void start_core_engine_statistic(const ConfigManager& config) {
             close(fan_fd);
             std::cout << "[CoreEngine] statistic: duration reached, results saved. Now calculating optimized parameters...\n";
             compute_max_file_size_by_count_95(g_stats.sizes);
-            double alpha = 0.10;
+            double alpha = 0.20;
             double safety = 1.20;
             size_t window_hits = 2000;
             size_t hop_hits = 1000;

@@ -78,6 +78,79 @@ void CacheL2::evict_lfu_size(int max_rows_to_evict, int candidate_limit) {
     }
 }
 #endif
+// ---------------------------
+// LRU (oldest by last_access)
+// ---------------------------
+#ifdef LRU
+void CacheL2::evict_lru(int max_rows_to_evict) {
+    if (max_rows_to_evict <= 0) return;
+    struct Row { Key key; long long last_ts; };
+    std::vector<Row> rows;
+    {
+        std::shared_lock rlk(mu_);
+        rows.reserve(map_.size());
+        for (const auto& kv : map_) {
+            rows.push_back(Row{ kv.first, static_cast<long long>(kv.second.last_access_ts) });
+        }
+    }
+    if (rows.empty()) return;
+    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b){
+        return a.last_ts < b.last_ts;
+    });
+    if (static_cast<int>(rows.size()) > max_rows_to_evict)
+        rows.resize(static_cast<size_t>(max_rows_to_evict));
+    {
+        std::unique_lock wlk(mu_);
+        for (const auto& r : rows) {
+            map_.erase(r.key);
+        }
+    }
+}
+#endif
+
+// ----------------------------------------------------
+// LFU with age-decay: score = hits / (1 + age / tau)
+// tie-breaker: older first (last_ts ASC)
+// ----------------------------------------------------
+#ifdef LFU
+void CacheL2::evict_lfu(int max_rows_to_evict, double tau_seconds) {
+    if (max_rows_to_evict <= 0) return;
+    const long long now_sec = static_cast<long long>(std::time(nullptr));
+    struct Row { Key key; long long hits; long long last_ts; double score; };
+    std::vector<Row> rows;
+    {
+        std::shared_lock rlk(mu_);
+        rows.reserve(map_.size());
+        for (const auto& kv : map_) {
+            const Entry& e = kv.second;
+            rows.push_back(Row{
+                kv.first,
+                static_cast<long long>(e.hit_count),
+                static_cast<long long>(e.last_access_ts),
+                0.0
+            });
+        }
+    }
+    if (rows.empty()) return;
+    for (auto& r : rows) {
+        const double h = static_cast<double>(r.hits);
+        const double age = (now_sec > r.last_ts) ? double(now_sec - r.last_ts) : 0.0;
+        r.score = h / (1.0 + age / tau_seconds);
+    }
+    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b){
+        if (a.score != b.score) return a.score < b.score;
+        return a.last_ts < b.last_ts;
+    });
+    if (static_cast<int>(rows.size()) > max_rows_to_evict)
+        rows.resize(static_cast<size_t>(max_rows_to_evict));
+    {
+        std::unique_lock wlk(mu_);
+        for (const auto& r : rows) {
+            map_.erase(r.key);
+        }
+    }
+}
+#endif
 
 uint64_t CacheL2::sum_cached_file_sizes() const {
     std::shared_lock rlk(mu_);
@@ -91,7 +164,7 @@ uint64_t CacheL2::sum_cached_file_sizes() const {
 
 bool CacheL2::check_capacity(uint64_t max_bytes) const {
     const uint64_t live_bytes = sum_cached_file_sizes();
-    
+    std::cout << live_bytes << std::endl;
 // #ifdef DEBUG
     std::cout << live_bytes << std::endl;
     if (live_bytes >= max_bytes) {
@@ -133,7 +206,26 @@ bool CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision
         int d = 0;
         if (l1_->get(st, ruleset_version, d)) {
             if (!check_capacity(max_bytes)) {
-                evict_lfu_size(10,  100);
+                #ifdef LFU_SIZE
+                std::cout << "\033[31m"
+                        << "[cache][evict] Cache full. Removing based on f(hit_count , size) item"
+                        << "\033[0m" << std::endl;
+                evict_lfu_size(20,1000);
+                #endif
+
+                #ifdef LRU
+                std::cout << "\033[31m"
+                        << "[cache][evict] Cache full. Removing least recently used item"
+                        << "\033[0m" << std::endl;
+                evict_lru(20);
+                #endif
+
+                #ifdef LFU
+                std::cout << "\033[31m"
+                        << "[cache][evict] Cache full. Removing least frequently used item"
+                        << "\033[0m" << std::endl;
+                evict_lfu(20);
+                #endif
             }
             #ifdef DEBUG
             std::cout << "[L1] Cache hit — served from Level 1" << std::endl;
@@ -167,7 +259,26 @@ void CacheL2::put(const struct stat& st, uint64_t ruleset_version, int decision,
     }
 
     if (!check_capacity(max_bytes)) {
-        evict_lfu_size( 10,  100);
+        #ifdef LFU_SIZE
+        std::cout << "\033[31m"
+                << "[cache][evict] Cache full. Removing based on f(hit_count , size) item"
+                << "\033[0m" << std::endl;
+        evict_lfu_size(20,1000);
+        #endif
+
+        #ifdef LRU
+        std::cout << "\033[31m"
+                << "[cache][evict] Cache full. Removing least recently used item"
+                << "\033[0m" << std::endl;
+        evict_lru(20);
+        #endif
+
+        #ifdef LFU
+        std::cout << "\033[31m"
+                << "[cache][evict] Cache full. Removing least frequently used item"
+                << "\033[0m" << std::endl;
+        evict_lfu(20);
+        #endif
     }
 
     const Key k{ static_cast<int64_t>(st.st_dev), static_cast<int64_t>(st.st_ino) };

@@ -34,7 +34,18 @@ public:
 
     bool get(const struct stat& st, uint64_t ruleset_version, int& decision,uint64_t max_bytes);
     void put(const struct stat& st, uint64_t ruleset_version, int decision, uint64_t max_bytes);
-    void evict_lfu_size(int max_rows_to_evict, int candidate_limit);
+    #ifdef LFU_SIZE
+    // Evict up to max_rows_to_evict entries using size-aware LFU (age-decayed)
+    void evict_lfu_size(int max_rows_to_evict, int candidate_limit = 256);
+    #endif
+
+    #ifdef LRU
+        void evict_lru(int max_rows_to_evict);
+    #endif
+
+    #ifdef LFU
+        void evict_lfu(int max_rows_to_evict, double tau_seconds = 3600.0);
+    #endif
 
 private:
     static inline int64_t to_ns(time_t s, long ns) {
