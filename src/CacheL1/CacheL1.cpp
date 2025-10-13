@@ -12,7 +12,7 @@
     // Desc: evict entries using size-aware LFU (age-decayed) scoring
     // In: sqlite3* db, int max_rows_to_evict, double beta, int candidate_limit
     // Out: void (deletes up to max_rows_to_evict rows)
-    #ifdef LFU_SIZE
+    #ifdef LFU_SIZE_L1
     static void evict_lfu_size(sqlite3* db, int max_rows_to_evict, double beta, int candidate_limit) {
         if (!db || max_rows_to_evict <= 0) return;
         if (candidate_limit <= 0) candidate_limit = 256;
@@ -76,7 +76,7 @@
     // Desc: evict oldest entries using LRU strategy
     // In: sqlite3* db, int max_rows_to_evict
     // Out: void (deletes rows)
-    #ifdef LRU
+    #ifdef LRU_L1
     static void evict_lru(sqlite3* db, int max_rows_to_evict) {
         if (!db || max_rows_to_evict <= 0) return;
 
@@ -124,7 +124,7 @@
     // Desc: evict least-frequently-used entries with age decay
     // In: sqlite3* db, int max_rows_to_evict
     // Out: void (deletes rows)
-    #ifdef LFU
+    #ifdef LFU_1
     static void evict_lfu(sqlite3* db, int max_rows_to_evict) {
         if (!db || max_rows_to_evict <= 0) return;
 

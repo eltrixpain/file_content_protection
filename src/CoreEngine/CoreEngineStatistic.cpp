@@ -157,48 +157,143 @@ static uint64_t compute_max_file_size_by_count_95(const SizeDistribution& sz)
 }
 
 
-// Desc: compute 95th-percentile size by file count
-// In: const SizeDistribution& sz
-// Out: uint64_t (size threshold in bytes)
-static uint64_t compute_max_file_size_95(const AccessDistribution& acc,
-                                         const SizeDistribution& sz)
+// Desc: Online EMA evaluation for "size95 by access count" over sliding windows.
+// Each Open event is counted separately (duplicates included).
+// In:  trace: event log (uses TraceEvent{..., size, op})
+//      window_hits: number of events per window (like test_k95_ema_online)
+//      hop_hits: sliding hop between windows
+//      coverage: target fraction (e.g., 0.95)
+//      alpha: EMA smoothing factor (0..1)
+//      safety_factor: multiplicative safety margin applied to EMA for testing
+// Out: summary with final_ema, pass_count, steps count (mirrors the other online eval)
+struct Size95OnlineEvalSummary {
+    double   final_ema = 0.0;
+    size_t   pass_count = 0;
+    std::vector<int> steps; // reserved only, same style as K95OnlineEvalSummary
+};
+
+static Size95OnlineEvalSummary test_size95_ema_online(const TraceLog& trace,
+                                                      size_t window_hits,
+                                                      size_t hop_hits,
+                                                      double coverage,
+                                                      double alpha,
+                                                      double safety_factor)
 {
-    std::vector<std::pair<uint64_t, uint64_t>> items;
-    items.reserve(acc.open_hits.size());
-    unsigned __int128 total_hits = 0;
+    Size95OnlineEvalSummary out;
+    size_t step_count = 0;
+    size_t pass_count = 0;
 
-    for (const auto& [key, hits] : acc.open_hits) {
-        auto it = sz.sizes.find(key);
-        if (it == sz.sizes.end()) continue;
-        items.emplace_back(it->second, hits);
-        total_hits += hits;
-    }
-    if (items.empty() || total_hits == 0) return 0;
+    const auto& evs = trace.events;
+    const size_t N = evs.size();
+    if (N == 0 || window_hits == 0) return out;
 
-    std::sort(items.begin(), items.end(),
-              [](auto& a, auto& b){ return a.first < b.first; });
+    auto build_histogram = [&](size_t start, size_t end,
+                               std::vector<std::pair<uint64_t,uint64_t>>& size_hits,
+                               uint64_t& total_hits)
+    {
+        // Aggregate by exact file size; each Open event contributes +1 to its size bin.
+        // Duplicates (same file opened multiple times) are counted multiple times as desired.
+        std::unordered_map<uint64_t, uint64_t> by_size;
+        total_hits = 0;
 
-    unsigned __int128 target = (total_hits * 95 + 99) / 100; // ceil(0.95 * total)
-    unsigned __int128 cum = 0;
-    for (const auto& [size, hits] : items) {
-        cum += hits;
-        if (cum >= target) {
-            std::cout << COLOR_GREEN
-                      << "[stat] max_file_size based on dynamic analysis = " << size
-                      << " bytes"
-                      << COLOR_RESET << std::endl;
-            return size;
+        for (size_t i = start; i <= end && i < N; ++i) {
+            const auto& e = evs[i];
+            if (e.op != OpType::Open) continue;
+            by_size[e.size] += 1;
+            total_hits += 1;
         }
-    }
-    std::cout << COLOR_GREEN
-              << "[stat] max_file_size_sync_scan = " << items.back().first
-              << " bytes"
-              << COLOR_RESET << "  "
-              << COLOR_CYAN << "(covers 100% of accesses)"
-              << COLOR_RESET << std::endl;
 
-    return items.back().first;
+        size_hits.clear();
+        size_hits.reserve(by_size.size());
+        for (auto& kv : by_size) size_hits.emplace_back(kv.first, kv.second);
+
+        // Sort ascending by size so cumulative hits from smallest sizes upward
+        // determine the "size95" threshold.
+        std::sort(size_hits.begin(), size_hits.end(),
+                  [](const auto& a, const auto& b){ return a.first < b.first; });
+    };
+
+    auto compute_size95 = [&](const std::vector<std::pair<uint64_t,uint64_t>>& size_hits,
+                              uint64_t total_hits)->uint64_t
+    {
+        if (size_hits.empty() || total_hits == 0) return 0ULL;
+        // ceil(coverage * total_hits) without floating rounding issues
+        const uint64_t target = static_cast<uint64_t>(
+            (static_cast<unsigned __int128>(total_hits) * static_cast<unsigned __int128>(std::llround(coverage*100))) + 99
+        ) / 100;
+
+        uint64_t cum = 0;
+        for (const auto& [sz, hits] : size_hits) {
+            cum += hits;
+            if (cum >= target) return sz; // first size that achieves required coverage
+        }
+        return size_hits.back().first;
+    };
+
+    auto achieved_with_threshold = [&](const std::vector<std::pair<uint64_t,uint64_t>>& size_hits,
+                                       uint64_t total_hits,
+                                       uint64_t threshold)->double
+    {
+        if (total_hits == 0) return 0.0;
+        uint64_t covered = 0;
+        // size_hits is sorted ascending. Count all hits with size <= threshold.
+        for (const auto& [sz, hits] : size_hits) {
+            if (sz > threshold) break;
+            covered += hits;
+        }
+        return static_cast<double>(covered) / static_cast<double>(total_hits);
+    };
+
+    double ema = 0.0;
+    bool initialized = false;
+    size_t start = 0;
+
+    std::vector<std::pair<uint64_t,uint64_t>> size_hits; // (size, hits)
+    uint64_t total_hits = 0;
+
+    while (start < N) {
+        const size_t end = std::min(start + window_hits, N) - 1;
+
+        build_histogram(start, end, size_hits, total_hits);
+        const uint64_t size95 = compute_size95(size_hits, total_hits);
+
+        if (!initialized) {
+            ema = static_cast<double>(size95);
+            initialized = true;
+            std::cout << COLOR_CYAN
+                      << "[STEP " << step_count++ << "] INIT window[" << start << ".." << end << "]  "
+                      << "size95=" << size95
+                      << "  EMA=" << std::fixed << std::setprecision(2) << ema
+                      << COLOR_RESET << std::endl;
+        } else {
+            // Use EMA (previous) × safety as the testing threshold
+            const uint64_t target_bytes = static_cast<uint64_t>(std::ceil(safety_factor * ema));
+            const double achieved = achieved_with_threshold(size_hits, total_hits, target_bytes);
+            const bool pass = (achieved >= coverage);
+
+            std::cout << COLOR_CYAN
+                      << "[STEP " << step_count++ << "] window[" << start << ".." << end << "]  "
+                      << "prevEMA=" << std::fixed << std::setprecision(2) << ema
+                      << "  target_bytes=" << target_bytes
+                      << "  achieved=" << std::setprecision(3) << (achieved * 100.0) << "%  "
+                      << (pass ? "PASS" : "FAIL")
+                      << COLOR_RESET << std::endl;
+            if (pass) ++pass_count;
+
+            // Update EMA with current window's size95
+            ema = alpha * static_cast<double>(size95) + (1.0 - alpha) * ema;
+        }
+
+        start += hop_hits;
+        if (hop_hits == 0) break; // safety guard
+    }
+
+    out.final_ema = ema;
+    out.pass_count = pass_count;
+    out.steps.resize(step_count);
+    return out;
 }
+
 
 static K95OnlineEvalSummary test_k95_ema_online(const TraceLog& trace,
                          size_t window_hits,
@@ -352,15 +447,31 @@ void start_core_engine_statistic(const ConfigManager& config) {
 
             close(fan_fd);
             std::cout << "[CoreEngine] statistic: duration reached, results saved. Now calculating optimized parameters...\n";
-            compute_max_file_size_95(g_stats.access, g_stats.sizes);
             compute_max_file_size_by_count_95(g_stats.sizes);
             double alpha = 0.10;
             double safety = 1.20;
-            // === 3) Online EMA evaluation phase ===
+            size_t window_hits = 2000;
+            size_t hop_hits = 1000;
+            // === 3) Online EMA evaluation phase for max_file_size===
+            auto sz_eval = test_size95_ema_online(
+                g_stats.trace,
+                /*window_hits=*/window_hits,
+                /*hop_hits=*/hop_hits,
+                /*coverage=*/0.95,
+                /*alpha=*/alpha,
+                /*safety_factor=*/safety
+            );
+
+            std::cout << COLOR_GREEN
+                    << "[size95][online] evaluated " << sz_eval.steps.size() << " windows, "
+                    << sz_eval.pass_count << " passed (≥95% coverage) "
+                    << "final_ema=" << std::fixed << std::setprecision(2) << sz_eval.final_ema
+                    << COLOR_RESET << std::endl;
+            // === 3) Online EMA evaluation phase for cache_size===
             auto eval = test_k95_ema_online(
                 g_stats.trace,
-                /*window_hits=*/500,
-                /*hop_hits=*/250,
+                /*window_hits=*/window_hits,
+                /*hop_hits=*/hop_hits,
                 /*coverage=*/0.95,
                 /*alpha=*/alpha,
                 /*safety_factor=*/safety
