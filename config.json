@@ -5,6 +5,6 @@
   "cache_capacity_bytes": "1KB",
   "max_file_size_sync_scan": "4MB",
   "statistical": {
-    "duration_sec": 600
+    "duration_sec": 120
   }
 }

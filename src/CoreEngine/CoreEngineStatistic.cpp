@@ -448,41 +448,43 @@ void start_core_engine_statistic(const ConfigManager& config) {
             close(fan_fd);
             std::cout << "[CoreEngine] statistic: duration reached, results saved. Now calculating optimized parameters...\n";
             compute_max_file_size_by_count_95(g_stats.sizes);
-            double alpha = 0.20;
+            // double alpha = 0.20;
             double safety = 1.20;
             size_t window_hits = 2000;
             size_t hop_hits = 1000;
-            // === 3) Online EMA evaluation phase for max_file_size===
-            auto sz_eval = test_size95_ema_online(
-                g_stats.trace,
-                /*window_hits=*/window_hits,
-                /*hop_hits=*/hop_hits,
-                /*coverage=*/0.95,
-                /*alpha=*/alpha,
-                /*safety_factor=*/safety
-            );
+            for (int i=1; i<10 ; i++){
+                double alpha = 0.1 * i;
+                // === 3) Online EMA evaluation phase for max_file_size===
+                auto sz_eval = test_size95_ema_online(
+                    g_stats.trace,
+                    /*window_hits=*/window_hits,
+                    /*hop_hits=*/hop_hits,
+                    /*coverage=*/0.95,
+                    /*alpha=*/alpha,
+                    /*safety_factor=*/safety
+                );
 
-            std::cout << COLOR_GREEN
-                    << "[size95][online] evaluated " << sz_eval.steps.size() << " windows, "
-                    << sz_eval.pass_count << " passed (≥95% coverage) "
-                    << "final_ema=" << std::fixed << std::setprecision(2) << sz_eval.final_ema
-                    << COLOR_RESET << std::endl;
-            // === 3) Online EMA evaluation phase for cache_size===
-            auto eval = test_k95_ema_online(
-                g_stats.trace,
-                /*window_hits=*/window_hits,
-                /*hop_hits=*/hop_hits,
-                /*coverage=*/0.95,
-                /*alpha=*/alpha,
-                /*safety_factor=*/safety
-            );
+                std::cout << COLOR_GREEN
+                        << "[size95][online] evaluated " << sz_eval.steps.size() << " windows, "
+                        << sz_eval.pass_count << " passed (≥95% coverage) "
+                        << "final_ema=" << std::fixed << std::setprecision(2) << sz_eval.final_ema
+                        << COLOR_RESET << std::endl;
+                // === 3) Online EMA evaluation phase for cache_size===
+                auto eval = test_k95_ema_online(
+                    g_stats.trace,
+                    /*window_hits=*/window_hits,
+                    /*hop_hits=*/hop_hits,
+                    /*coverage=*/0.95,
+                    /*alpha=*/alpha,
+                    /*safety_factor=*/safety
+                );
 
-            std::cout << COLOR_GREEN
-                    << "[k95][online] evaluated " << eval.steps.size() << " windows, "
-                    << eval.pass_count << " passed (≥95% coverage)"
-                    << "final_ema=" << std::fixed << std::setprecision(2) << eval.final_ema
-                    << COLOR_RESET << std::endl;
-
+                std::cout << COLOR_GREEN
+                        << "[k95][online] evaluated " << eval.steps.size() << " windows, "
+                        << eval.pass_count << " passed (≥95% coverage)"
+                        << "final_ema=" << std::fixed << std::setprecision(2) << eval.final_ema
+                        << COLOR_RESET << std::endl;
+            }
             return;
         }
 

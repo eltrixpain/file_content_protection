@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -O2
+CXXFLAGS = -std=c++17 -Wall -O2 -DLFU_SIZE
 INCLUDE_DIR = include
 
 SRC_FILES = \
@@ -19,7 +19,7 @@ LIBS = `pkg-config --cflags --libs poppler-cpp` -lsqlite3 -pthread
 
 all: fileguard
 
-fileguard:
+fileguard: clean
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) -o fileguard $(SRC_FILES) $(LIBS)
 
 # --- cache policies ---
@@ -33,7 +33,7 @@ lfu_size: CXXFLAGS += -DLFU_SIZE
 lfu_size: clean fileguard
 
 # --- debug build ---
-debug: CXXFLAGS += -DDEBUG -g -DLFU_SIZE
+debug: CXXFLAGS += -DDEBUG -g 
 debug: clean fileguard
 
 clean:
