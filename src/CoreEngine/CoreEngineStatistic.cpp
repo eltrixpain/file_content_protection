@@ -22,6 +22,7 @@
 
 #define COLOR_GREEN "\033[1;32m"
 #define COLOR_CYAN  "\033[1;36m"
+#define COLOR_RED   "\033[1;31m"
 #define COLOR_RESET "\033[0m"
 
 namespace fs = std::filesystem;
@@ -453,7 +454,8 @@ void start_core_engine_statistic(const ConfigManager& config) {
             size_t window_hits = 2000;
             size_t hop_hits = 1000;
             for (int i=1; i<10 ; i++){
-                double alpha = 0.1 * i;
+                double alpha = 0.1 * i; 
+                std::cout << COLOR_RED << "Coumputing with alpha : " << alpha << COLOR_RESET << std::endl;
                 // === 3) Online EMA evaluation phase for max_file_size===
                 auto sz_eval = test_size95_ema_online(
                     g_stats.trace,
