@@ -2,7 +2,7 @@
   "watch_mode": "mount",
   "watch_target": "/home",
   "patterns": ["password\\s*=\\s*.*"],
-  "cache_capacity_bytes": "1MB",
+  "cache_capacity_bytes": "80KB",
   "max_file_size_sync_scan": "10MB",
   "statistical": {
     "duration_sec": 10

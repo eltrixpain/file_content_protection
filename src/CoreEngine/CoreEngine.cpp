@@ -32,7 +32,7 @@
 
 
 #define BUF_SIZE 4096
-#define REPORT_PER_CYCLE 400
+#define REPORT_PER_CYCLE 200
 #define COLOR_GREEN "\033[1;32m"
 #define COLOR_CYAN  "\033[1;36m"
 #define COLOR_RED   "\033[1;31m"
@@ -75,7 +75,7 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
     const std::string mode   = config.getWatchMode();
     const std::string target = config.getWatchTarget();
 
-    int fan_fd = fanotify_init(FAN_CLASS_CONTENT | FAN_CLOEXEC | FAN_NONBLOCK,
+    int fan_fd = fanotify_init(FAN_CLASS_CONTENT | FAN_CLOEXEC ,
                                O_RDONLY | O_LARGEFILE);
     if (fan_fd == -1) { perror("fanotify_init"); exit(1); }
 
