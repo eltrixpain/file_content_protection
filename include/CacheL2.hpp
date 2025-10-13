@@ -32,7 +32,7 @@ public:
 public:
     explicit CacheL2(CacheL1& l1_ref) : l1_(&l1_ref) {}
 
-    bool get(const struct stat& st, uint64_t ruleset_version, int& decision,uint64_t max_bytes);
+    int get(const struct stat& st, uint64_t ruleset_version, int& decision,uint64_t max_bytes);
     void put(const struct stat& st, uint64_t ruleset_version, int decision, uint64_t max_bytes);
     #ifdef LFU_SIZE
     // Evict up to max_rows_to_evict entries using size-aware LFU (age-decayed)

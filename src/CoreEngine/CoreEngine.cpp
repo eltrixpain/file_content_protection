@@ -32,9 +32,10 @@
 
 
 #define BUF_SIZE 4096
-#define REPORT_PER_CYCLE 50
+#define REPORT_PER_CYCLE 400
 #define COLOR_GREEN "\033[1;32m"
 #define COLOR_CYAN  "\033[1;36m"
+#define COLOR_RED   "\033[1;31m"
 #define COLOR_RESET "\033[0m"
 
 
@@ -55,12 +56,12 @@ auto report_every = [](uint64_t n) {
         double avg_ms = (double)total_us / decisions / 1000.0;
         double hit_rate = (double)hits * 100.0 / (double)decisions;
         double byte_hit_rate = total_bytes ? (double)hit_bytes * 100.0 / (double)total_bytes : 0.0;
-        std::cout << "\033[32m"
+        std::cout << COLOR_RED 
           << "[metrics] decisions=" << decisions
           << " hit_rate=" << hit_rate << "% "
           << "byte_hit_rate=" << byte_hit_rate << "% "
           << "avg_decision=" << avg_ms << " ms"
-          << "\033[0m" << std::endl;
+          << COLOR_RESET << std::endl;
     }
 };
 
@@ -183,10 +184,13 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
 
 
                 //Cache path
-                if (l2.get(st, RULESET_VERSION, decision,config.max_cache_bytes())) {
-                    hits++;
+                int resp_cache = l2.get(st, RULESET_VERSION, decision,config.max_cache_bytes());
+                if (resp_cache != 0) {
+                    if (resp_cache == 2){
+                        hits++;
+                        hit_bytes   += (uint64_t)st.st_size; 
+                    }
                     total_bytes += (uint64_t)st.st_size;
-                    hit_bytes   += (uint64_t)st.st_size; 
                     struct fanotify_response resp{};
                     resp.fd = metadata->fd;
                     resp.response = (decision == 0) ? FAN_ALLOW : FAN_DENY;
@@ -195,7 +199,7 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
                     auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t0).count();
                     total_us += dt_us;
                     decisions++;
-                    //#ifdef DEBUG
+                    //#ifdef DEBUG_CACHE
                     report_every(REPORT_PER_CYCLE);
                     //#endif
                     close(metadata->fd);
@@ -213,7 +217,7 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
                 total_us += dt_us;
                 decisions++;
                 total_bytes += (uint64_t)st.st_size; 
-                //#ifdef DEBUG
+                //#ifdef DEBUG_CACHE
                 report_every(REPORT_PER_CYCLE);
                 //#endif
 

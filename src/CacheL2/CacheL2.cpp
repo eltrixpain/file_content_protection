@@ -164,9 +164,8 @@ uint64_t CacheL2::sum_cached_file_sizes() const {
 
 bool CacheL2::check_capacity(uint64_t max_bytes) const {
     const uint64_t live_bytes = sum_cached_file_sizes();
-    std::cout << live_bytes << std::endl;
-// #ifdef DEBUG
-    std::cout << live_bytes << std::endl;
+// #ifdef DEBUG_CACHE
+    //std::cout << live_bytes << std::endl;
     if (live_bytes >= max_bytes) {
         std::cerr << "[L2] file-bytes quota exceeded: "
                   << live_bytes << " >= " << max_bytes << " bytes\n";
@@ -176,7 +175,7 @@ bool CacheL2::check_capacity(uint64_t max_bytes) const {
 }
 
 
-bool CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision,uint64_t max_bytes) {
+int CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision,uint64_t max_bytes) {
     (void)ruleset_version; // used only if we consult L1
     const Key k{ static_cast<int64_t>(st.st_dev), static_cast<int64_t>(st.st_ino) };
     const int64_t cur_mtime_ns = to_ns(st.st_mtim.tv_sec, st.st_mtim.tv_nsec);
@@ -197,7 +196,7 @@ bool CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision
                 #ifdef DEBUG
                 std::cout << "[L2] Cache hit — served from Level 2" << std::endl;
                 #endif
-                return true;;
+                return 2;;
             }
         }
     }
@@ -243,14 +242,14 @@ bool CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision
 
             decision = d;
             
-            return true;
+            return 1;
         }
     }
     #ifdef DEBUG
     std::cout << "[MISS] Not found in any cache — reading from source" << std::endl;
     #endif
 
-    return false;
+    return 0;
 }
 
 void CacheL2::put(const struct stat& st, uint64_t ruleset_version, int decision, uint64_t max_bytes) {

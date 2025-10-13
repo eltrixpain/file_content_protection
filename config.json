@@ -1,9 +1,9 @@
 {
-  "watch_mode": "path",
-  "watch_target": "/home/matrix/Desktop/aksha/daneshghah",
-  "patterns": ["password\\s*=\\s*.*", "asndifnasfiasndfasdfinnsai121d"],
-  "cache_capacity_bytes": "1KB",
-  "max_file_size_sync_scan": "4MB",
+  "watch_mode": "mount",
+  "watch_target": "/home",
+  "patterns": ["password\\s*=\\s*.*"],
+  "cache_capacity_bytes": "1MB",
+  "max_file_size_sync_scan": "10MB",
   "statistical": {
     "duration_sec": 10
   }
