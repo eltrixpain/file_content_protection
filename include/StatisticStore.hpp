@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <map>
 #include <vector>
+#include <cstddef>
 
 struct FileKey {
     uint64_t dev;
@@ -39,6 +40,11 @@ struct StatisticStore {
 };
 
 
+struct Size95OnlineEvalSummary {
+    double   final_ema = 0.0;
+    size_t   pass_count = 0;
+    std::vector<int> steps; // reserved only, same style as K95OnlineEvalSummary
+};
 
 struct K95OnlineEvalStep {
     size_t   start_idx;

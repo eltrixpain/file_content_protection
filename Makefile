@@ -6,6 +6,8 @@ SRC_FILES = \
     main.cpp \
     src/CoreEngine/CoreEngine.cpp \
     src/CoreEngine/CoreEngineStatistic.cpp \
+    src/CoreEngine/CoreEngineSimulation.cpp \
+    src/CoreEngine/StatisticStoreIO.cpp \
     src/Logger/Logger.cpp \
     src/ConfigManager/ConfigManager.cpp \
     src/RuleEvaluator/RuleEvaluator.cpp \
