@@ -20,7 +20,7 @@ def plot_size_histogram(sizes_csv: str, bins_count: int = 50):
     plt.title("File Size Distribution")
     plt.grid(True, which="both", ls="--", alpha=0.5)
     plt.tight_layout()
-    plt.show()
+    plt.savefig("size_histogram.png")
 
 
 def plot_access_distribution_by_size(access_csv: str, sizes_csv: str, bins_count: int = 50):
@@ -67,7 +67,7 @@ def plot_access_distribution_by_size(access_csv: str, sizes_csv: str, bins_count
     plt.title("Access Distribution by File Size")
     plt.grid(True, which="both", ls="--", alpha=0.5)
     plt.tight_layout()
-    plt.show()
+    plt.savefig("access_distribution.png")
 
 
 if __name__ == "__main__":

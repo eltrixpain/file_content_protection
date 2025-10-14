@@ -177,10 +177,26 @@ void start_core_engine_statistic(const ConfigManager& config) {
             ofs1.close();
             #endif 
             close(fan_fd);
-            // SAVE only — no computation here
+            auto t = std::time(nullptr);
+            std::tm tm{};
+            localtime_r(&t, &tm);
+
+            char filename[256];
+            std::snprintf(
+                filename,
+                sizeof(filename),
+                "statistical_result/trace_data-%04d-%02d-%02d-%02d-%02d-%02d.bin",
+                tm.tm_year + 1900,
+                tm.tm_mon + 1,
+                tm.tm_mday,
+                tm.tm_hour,
+                tm.tm_min,
+                tm.tm_sec
+            );
+            // SAVE only
             std::filesystem::create_directories("statistical_result");
-            if (save_statistic_store(g_stats, "statistical_result/trace_data.bin")) {
-                std::cout << "[CoreEngine] statistic: trace saved to statistical_result/trace_data.bin\n";
+            if (save_statistic_store(g_stats, filename)) {
+                std::cout << "[CoreEngine] statistic: trace saved to " << filename << "\n";
             } else {
                 std::cerr << "[CoreEngine] statistic: failed to save trace data\n";
             }
