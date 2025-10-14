@@ -194,7 +194,6 @@ void start_core_engine_statistic(const ConfigManager& config) {
                 tm.tm_sec
             );
             // SAVE only
-            std::filesystem::create_directories("statistical_result");
             if (save_statistic_store(g_stats, filename)) {
                 std::cout << "[CoreEngine] statistic: trace saved to " << filename << "\n";
             } else {

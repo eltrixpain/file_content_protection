@@ -3,6 +3,7 @@
 #include "StatisticStore.hpp"
 #include <iostream>
 #include <iomanip>
+#include <filesystem>
 #include <algorithm>
 #include <unordered_map>
 #include <cmath>
@@ -279,24 +280,33 @@ static K95OnlineEvalSummary test_k95_ema_online(const TraceLog& trace,
 
 
 
-void start_core_engine_simulation(const ConfigManager& config) {
-    StatisticStore loaded;
-    if (!load_statistic_store(loaded, "statistical_result/trace_data.bin")) {
-        std::cerr << "[Simulation] Failed to load statistic data\n";
+void start_core_engine_simulation(const ConfigManager& config, const std::string& filename) {
+    if (filename.empty()) {
+        std::cerr << "[Simulation] Error: No filename provided.\n";
+        std::cerr << "Usage: ./filegaurde simulation <trace_file.bin>\n";
         return;
     }
 
-    std::cout << "[Simulation] Loaded "
-              << loaded.trace.events.size()
-              << " events, "
-              << loaded.sizes.sizes.size()
-              << " sizes, "
-              << loaded.access.open_hits.size()
-              << " access entries\n";
+    std::string filepath = "statistical_result/" + filename;
 
-    // perform analysis
-    std::cout << "[Simulation] Calculating optimized parameters...\n";
+    if (!std::filesystem::exists(filepath)) {
+        std::cerr << "[Simulation] File not found: " << filepath << "\n";
+        return;
+    }
 
+    StatisticStore loaded;
+    if (!load_statistic_store(loaded, filepath)) {
+        std::cerr << "[Simulation] Failed to load trace data from " << filepath << "\n";
+        return;
+    }
+
+    std::cout << "[Simulation] Loaded trace: " << filepath << "\n";
+    std::cout << "[Simulation] Events: " << loaded.trace.events.size()
+              << " Sizes: " << loaded.sizes.sizes.size()
+              << " Access: " << loaded.access.open_hits.size()
+              << "\n";
+
+    // === Run analysis ===
     compute_max_file_size_by_count_95(loaded.sizes);
 
     double safety = 1.20;
@@ -305,36 +315,12 @@ void start_core_engine_simulation(const ConfigManager& config) {
 
     for (int i = 1; i < 10; i++) {
         double alpha = 0.1 * i;
-        std::cout << COLOR_RED << "Computing with alpha: " << alpha << COLOR_RESET << std::endl;
-
-        auto sz_eval = test_size95_ema_online(
-            loaded.trace,
-            window_hits,
-            hop_hits,
-            0.95,
-            alpha,
-            safety
-        );
+        auto sz_eval = test_size95_ema_online(loaded.trace, window_hits, hop_hits, 0.95, alpha, safety);
+        auto k_eval  = test_k95_ema_online(loaded.trace, window_hits, hop_hits, 0.95, alpha, safety);
 
         std::cout << COLOR_GREEN
-                  << "[size95][online] evaluated " << sz_eval.steps.size() << " windows, "
-                  << sz_eval.pass_count << " passed (≥95% coverage) "
-                  << "final_ema=" << std::fixed << std::setprecision(2) << sz_eval.final_ema
-                  << COLOR_RESET << std::endl;
-
-        auto eval = test_k95_ema_online(
-            loaded.trace,
-            window_hits,
-            hop_hits,
-            0.95,
-            alpha,
-            safety
-        );
-
-        std::cout << COLOR_GREEN
-                  << "[k95][online] evaluated " << eval.steps.size() << " windows, "
-                  << eval.pass_count << " passed (≥95% coverage)"
-                  << "final_ema=" << std::fixed << std::setprecision(2) << eval.final_ema
-                  << COLOR_RESET << std::endl;
+                  << "[α=" << alpha << "] size95_ema=" << sz_eval.final_ema
+                  << " | k95_ema=" << k_eval.final_ema
+                  << COLOR_RESET << "\n";
     }
 }

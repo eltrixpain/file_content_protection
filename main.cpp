@@ -33,7 +33,12 @@ int main(int argc, char** argv) {
 
     // "simulation" mode
     if (argc > 1 && std::string(argv[1]) == "simulation") {
-        start_core_engine_simulation(boot.config);
+        if (argc < 3) {
+            std::cerr << "Usage: " << argv[0] << " simulation <trace_file.bin>\n";
+            return 1;
+        }
+        std::string filename = argv[2];
+        start_core_engine_simulation(boot.config, filename);
         return 0;
     }
 
