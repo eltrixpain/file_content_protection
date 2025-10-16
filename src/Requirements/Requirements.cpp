@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS cache_entries (
   size            INTEGER NOT NULL,
   ruleset_version INTEGER NOT NULL,
   decision        INTEGER NOT NULL,
+  last_access_ts  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  hit_count       INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (dev, ino)
 );
 

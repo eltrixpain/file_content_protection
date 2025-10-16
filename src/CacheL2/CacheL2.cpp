@@ -8,6 +8,8 @@
 #include <cmath>
 
 
+static std::mutex g_l1_mu;
+
 #ifdef LFU_SIZE
 void CacheL2::evict_lfu_size(int max_rows_to_evict, int candidate_limit) {
     if (max_rows_to_evict <= 0) return;
@@ -253,7 +255,8 @@ int CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision,
 }
 
 void CacheL2::put(const struct stat& st, uint64_t ruleset_version, int decision, uint64_t max_bytes) {
-    if (l1_) {
+     if (l1_) {
+        std::lock_guard<std::mutex> lk(g_l1_mu);   // <-- افزودن این خط
         l1_->put(st, ruleset_version, decision, max_bytes);
     }
 
