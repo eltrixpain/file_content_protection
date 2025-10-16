@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 
 
@@ -75,24 +76,61 @@ static std::string extract_text_from_doc_data(
 {
     namespace fs = std::filesystem;
 
-    std::string tmp_txt = file_path + ".txt";
-    std::string cmd = "libreoffice --headless --convert-to txt:Text \"" 
-                      + file_path + "\" --outdir \"" 
-                      + fs::path(file_path).parent_path().string() + "\" 2>/dev/null";
+    try {
+        if (file_path.empty() || !fs::exists(file_path)) {
+            log_poppler_error("invalid file path", log_pipe_fd);
+            return {};
+        }
 
-    int ret = std::system(cmd.c_str());
-    if (ret != 0 || !fs::exists(tmp_txt)) {
-        log_poppler_error("libreoffice convert failed", log_pipe_fd);
+        if (std::system("command -v libreoffice >/dev/null 2>&1") != 0) {
+            log_poppler_error("libreoffice not installed", log_pipe_fd);
+            return {};
+        }
+
+        std::string tmpdir_tmpl = (fs::temp_directory_path() / "cpXXXXXX").string();
+        std::vector<char> buf(tmpdir_tmpl.begin(), tmpdir_tmpl.end());
+        buf.push_back('\0');
+        char* tmpdir = mkdtemp(buf.data());
+        if (!tmpdir) {
+            log_poppler_error("mkdtemp failed", log_pipe_fd);
+            return {};
+        }
+
+        fs::path tmpdir_path(tmpdir);
+        std::string filename = fs::path(file_path).filename().string();
+        fs::path out_txt = tmpdir_path / (filename + ".txt");
+        fs::path err_file = tmpdir_path / "stderr.txt";
+
+        std::string cmd = "libreoffice --headless --convert-to txt:Text \"" +
+            file_path + "\" --outdir \"" + tmpdir_path.string() +
+            "\" 2>\"" + err_file.string() + "\"";
+        std::system(cmd.c_str());
+
+        if (!fs::exists(out_txt)) {
+            if (fs::exists(err_file)) {
+                std::ifstream e(err_file);
+                std::string err((std::istreambuf_iterator<char>(e)), {});
+                log_poppler_error(("convert failed: " + err).c_str(), log_pipe_fd);
+            } else {
+                log_poppler_error("no output file", log_pipe_fd);
+            }
+            fs::remove_all(tmpdir_path);
+            return {};
+        }
+
+        std::ifstream in(out_txt);
+        std::string result((std::istreambuf_iterator<char>(in)), {});
+        fs::remove_all(tmpdir_path);
+        return result;
+    } catch (const std::exception& e) {
+        log_poppler_error(e.what(), log_pipe_fd);
+        return {};
+    } catch (...) {
+        log_poppler_error("unknown exception", log_pipe_fd);
         return {};
     }
-
-    std::ifstream in(tmp_txt);
-    std::string result((std::istreambuf_iterator<char>(in)),
-                       std::istreambuf_iterator<char>());
-    in.close();
-    fs::remove(tmp_txt);
-    return result;
 }
+
 
 
 // Desc: detect content type from raw bytes ("%PDF-" => "pdf")
