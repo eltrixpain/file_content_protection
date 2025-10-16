@@ -55,8 +55,8 @@ static inline void trim_inplace(std::string& t) {
 
 // Desc: parse size string (KB/MB) into bytes
 // In: const std::string& raw
-// Out: uint64_t (bytes); throws on invalid input
-uint64_t ConfigManager::parse_size_kb_mb(const std::string& raw) {
+// Out: std::uint64_t (bytes); throws on invalid input
+std::uint64_t ConfigManager::parse_size_kb_mb(const std::string& raw) {
     std::string in = raw;
     trim_inplace(in);
 
@@ -66,7 +66,7 @@ uint64_t ConfigManager::parse_size_kb_mb(const std::string& raw) {
         throw std::runtime_error("invalid format (only KB/MB allowed): '" + raw + "'");
     }
 
-    uint64_t n = 0;
+    std::uint64_t n = 0;
     try {
         n = std::stoull(m[1].str());
     } catch (...) {
@@ -100,9 +100,6 @@ static void ensure_meta_table(sqlite3* db) {
 }
 
 
-// Desc: load and validate JSON config into ConfigManager
-// In: const std::string& config_path
-// Out: bool (true on success, false on error)
 bool ConfigManager::loadFromFile(const std::string& config_path) {
     std::ifstream file(config_path);
     if (!file.is_open()) {
@@ -111,51 +108,30 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
     }
 
     json j;
-    try {
-        file >> j;
-    } catch (const std::exception& e) {
-        std::cerr << "[ConfigManager] invalid JSON: " << e.what() << "\n";
-        return false;
-    } catch (...) {
-        std::cerr << "[ConfigManager] invalid JSON (unknown error)\n";
-        return false;
-    }
+    try { file >> j; }
+    catch (const std::exception& e) { std::cerr << "[ConfigManager] invalid JSON: " << e.what() << "\n"; return false; }
+    catch (...) { std::cerr << "[ConfigManager] invalid JSON (unknown error)\n"; return false; }
 
-    // --- watch_mode path or mount
+    // watch_mode
     if (j.contains("watch_mode") && j["watch_mode"].is_string()) {
-        watch_mode_ = toLower(j["watch_mode"].get<std::string>());
+        watch_mode_ = [](std::string s){ for (char& c: s) c = (char)std::tolower((unsigned char)c); return s; }(j["watch_mode"].get<std::string>());
         if (watch_mode_ != "path" && watch_mode_ != "mount") {
             std::cerr << "[ConfigManager] watch_mode must be 'path' or 'mount', got: " << watch_mode_ << "\n";
             return false;
         }
-    } else {
-        std::cerr << "[ConfigManager] missing or invalid 'watch_mode'\n";
-        return false;
-    }
+    } else { std::cerr << "[ConfigManager] missing or invalid 'watch_mode'\n"; return false; }
 
-    // --- watch_target
+    // watch_target
     if (j.contains("watch_target") && j["watch_target"].is_string()) {
         watch_target_ = j["watch_target"].get<std::string>();
-        if (watch_target_.empty()) {
-            std::cerr << "[ConfigManager] 'watch_target' must be non-empty\n";
-            return false;
-        }
-    } else {
-        std::cerr << "[ConfigManager] missing or invalid 'watch_target'\n";
-        return false;
-    }
+        if (watch_target_.empty()) { std::cerr << "[ConfigManager] 'watch_target' must be non-empty\n"; return false; }
+    } else { std::cerr << "[ConfigManager] missing or invalid 'watch_target'\n"; return false; }
 
-    patterns.clear();
+    // patterns (strings only)
     pattern_strings_.clear();
     auto add_pat = [&](const std::string& pat) {
+        // Accept as-is; Hyperscan will compile/validate later
         pattern_strings_.push_back(pat);
-        try {
-            patterns.emplace_back(pat, std::regex::ECMAScript | std::regex::icase);
-        } catch (const std::exception& e) {
-            std::cerr << "[ConfigManager] invalid regex pattern skipped: '" << pat << "' error=" << e.what() << "\n";
-        } catch (...) {
-            std::cerr << "[ConfigManager] invalid regex pattern skipped: '" << pat << "' (unknown error)\n";
-        }
     };
     if (j.contains("patterns")) {
         if (j["patterns"].is_array()) {
@@ -168,68 +144,31 @@ bool ConfigManager::loadFromFile(const std::string& config_path) {
         }
     }
 
+    // sizes
     cache_capacity_bytes_ = 0;
     if (j.contains("cache_capacity_bytes") && j["cache_capacity_bytes"].is_string()) {
-        try {
-            cache_capacity_bytes_ = parse_size_kb_mb(j["cache_capacity_bytes"].get<std::string>());
-        } catch (...) {
-            std::cerr << "[ConfigManager] 'cache_capacity_bytes' must be in thie format: 2KB or 10MB\n";
-            return false;
-        }
+        try { cache_capacity_bytes_ = parse_size_kb_mb(j["cache_capacity_bytes"].get<std::string>()); }
+        catch (...) { std::cerr << "[ConfigManager] 'cache_capacity_bytes' must be like '80KB' or '10MB'\n"; return false; }
     }
-
     max_file_size_sync_scan_ = 0;
     if (j.contains("max_file_size_sync_scan") && j["max_file_size_sync_scan"].is_string()) {
-        try {
-            max_file_size_sync_scan_ = parse_size_kb_mb(j["max_file_size_sync_scan"].get<std::string>());
-        } catch (...) {
-            std::cerr << "[ConfigManager] 'max_file_size_sync_scan' must be in thie format: 2KB or 10MB\n";
-            return false;
-        }
+        try { max_file_size_sync_scan_ = parse_size_kb_mb(j["max_file_size_sync_scan"].get<std::string>()); }
+        catch (...) { std::cerr << "[ConfigManager] 'max_file_size_sync_scan' must be like '10MB'\n"; return false; }
     }
 
-    duration_sec_ = 0;  // reset
+    duration_sec_ = 0;
     if (j.contains("statistical") && j["statistical"].is_object()) {
         const auto& s = j["statistical"];
         if (s.contains("duration_sec") && s["duration_sec"].is_number_integer()) {
             try {
                 duration_sec_ = s["duration_sec"].get<uint64_t>();
-                if (duration_sec_ == 0) {
-                    std::cerr << "[ConfigManager] 'statistical.duration_sec' must be > 0\n";
-                    return false;
-                }
-            } catch (...) {
-                std::cerr << "[ConfigManager] 'statistical.duration_sec' must be integer\n";
-                return false;
-            }
-        } else {
-            std::cerr << "[ConfigManager] missing or invalid 'statistical.duration_sec'\n";
-            return false;
-        }
-    } else {
-        std::cerr << "[ConfigManager] missing or invalid 'statistical' object\n";
-        return false;
-    }
-
+                if (duration_sec_ == 0) { std::cerr << "[ConfigManager] 'statistical.duration_sec' must be > 0\n"; return false; }
+            } catch (...) { std::cerr << "[ConfigManager] 'statistical.duration_sec' must be integer\n"; return false; }
+        } else { std::cerr << "[ConfigManager] missing or invalid 'statistical.duration_sec'\n"; return false; }
+    } else { std::cerr << "[ConfigManager] missing or invalid 'statistical' object\n"; return false; }
 
     return true;
 }
-
-
-// Desc: test if any configured regex matches the text
-// In: const std::string& text
-// Out: bool (true if matched)
-bool ConfigManager::matches(const std::string& text) const {
-    for (const auto& re : patterns) {
-        if (std::regex_search(text, re)) return true;
-    }
-    return false;
-}
-
-// Desc: get number of compiled patterns
-// In: (none)
-// Out: size_t (count)
-size_t ConfigManager::patternCount() const { return patterns.size(); }
 
 
 // Desc: build canonical JSON of rules (sorted patterns)
@@ -259,8 +198,8 @@ std::string ConfigManager::hashCanonical(const std::string& data) {
     return h;
 #else
 
-    const uint64_t FNV_OFFSET = 1469598103934665603ULL, FNV_PRIME = 1099511628211ULL;
-    uint64_t hash = FNV_OFFSET;
+    const std::uint64_t FNV_OFFSET = 1469598103934665603ULL, FNV_PRIME = 1099511628211ULL;
+    std::uint64_t hash = FNV_OFFSET;
     for (unsigned char c : data) {
         hash ^= c;
         hash *= FNV_PRIME;
@@ -300,7 +239,7 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
     // 2) read previous hashes & version
     std::string last_scope_hash;
     std::string last_patterns_hash;
-    uint64_t    last_ver = 0;
+    std::uint64_t last_ver = 0;
 
     {
         sqlite3_stmt* s = nullptr;
@@ -384,7 +323,7 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
 
     // Branch A: scope changed OR both changed => treat as full change
     if (scope_changed) {
-        const uint64_t new_ver = last_ver + 1;
+        const std::uint64_t new_ver = last_ver + 1;
         sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
         {
             sqlite3_stmt* u = nullptr;
@@ -416,7 +355,7 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
 
     // Branch B: only patterns changed => lighter path (still bump version)
     {
-        const uint64_t new_ver = last_ver + 1;
+        const std::uint64_t new_ver = last_ver + 1;
         sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
         {
             sqlite3_stmt* u = nullptr;

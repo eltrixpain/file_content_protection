@@ -105,11 +105,11 @@ bool Requirements::validateConfig(const ConfigManager& cfg, StartupResult& out) 
         return false;
     }
 
-    if (cfg.patternCount() == 0) {
-        out.error = "[config] no valid patterns loaded";
-        out.logs.push_back(out.error);
-        return false;
-    }
+    // if (cfg.patternCount() == 0) {
+    //     out.error = "[config] no valid patterns loaded";
+    //     out.logs.push_back(out.error);
+    //     return false;
+    // }
     const uint64_t max_bytes = cfg.max_cache_bytes();
     const uint64_t MIN_BYTES = 1 * 1024ULL;                              // 5KB
     const uint64_t MAX_BYTES = 1ULL * 1024ULL * 1024ULL * 1024ULL; // 1GB
@@ -132,7 +132,7 @@ bool Requirements::validateConfig(const ConfigManager& cfg, StartupResult& out) 
     out.logs.push_back("[config] cache_max_size: " + std::to_string(max_bytes) + " bytes");
     out.logs.push_back("[config] watch_mode: " + mode);
     out.logs.push_back("[config] watch_target: " + target);
-    out.logs.push_back("[config] patterns loaded: " + std::to_string(cfg.patternCount()));
+    // out.logs.push_back("[config] patterns loaded: " + std::to_string(cfg.patternCount()));
     out.logs.push_back("[config] validation ok");
     return true;
 }

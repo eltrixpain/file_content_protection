@@ -1,4 +1,5 @@
 #include "RuleEvaluator.hpp"
+#include "PatternMatcherHS.hpp"
 #include "AsyncScanQueue.hpp"
 #include "ContentParser.hpp"
 #include <iostream>
@@ -12,7 +13,8 @@
 #include <sys/stat.h>
 
 
-RuleEvaluator::RuleEvaluator(const ConfigManager& config) : config(config) {}
+RuleEvaluator::RuleEvaluator(const ConfigManager& config, const PatternMatcherHS& matcher)
+    : config(config), matcher(matcher) {}
 
 
 // Desc: evaluate file access against rules and respond via fanotify
@@ -56,7 +58,7 @@ void RuleEvaluator::handle_event(int fan_fd,
     }
 
     size_t fsz = static_cast<size_t>(st.st_size);
-    uint64_t max_sync = config.max_file_size_sync_scan();
+    std::uint64_t max_sync = config.max_file_size_sync_scan();
     if (max_sync > 0 && fsz > max_sync) {
         // duplicate fd
         int dupfd = fcntl(metadata->fd, F_DUPFD_CLOEXEC, 3);
@@ -83,7 +85,7 @@ void RuleEvaluator::handle_event(int fan_fd,
     std::string type = ContentParser::detect_type(header);
     std::string extracted = ContentParser::extract_text(type,std::string(buffer.data(), buffer.size()),log_pipe_fd);
 
-    if (config.matches(extracted)) {
+    if (matcher.matches(extracted)) {
         out_decision = 1; // BLOCK
 
         std::time_t now = std::time(nullptr);

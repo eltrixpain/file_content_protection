@@ -106,7 +106,9 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
 
     // [Initialize and assignment for prepration]
     pid_t self_pid = getpid();
-    RuleEvaluator evaluator(config);
+    PatternMatcherHS hs;
+    hs.buildFromConfig(config);
+    RuleEvaluator evaluator(config, hs);
     char buffer[BUF_SIZE];
     struct fanotify_event_metadata* metadata;
     CacheL1 l1(cache_db);
@@ -114,7 +116,7 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
     const uint64_t RULESET_VERSION = config.getRulesetVersion();
 
     // [Starting thread pool]   
-    start_async_workers(log_pipe[1], config, l1, /*num_workers=*/1);
+    start_async_workers(log_pipe[1], config, &hs, l1, /*num_workers=*/1);
 
 
 

@@ -11,13 +11,14 @@ SRC_FILES = \
     src/Logger/Logger.cpp \
     src/ConfigManager/ConfigManager.cpp \
     src/RuleEvaluator/RuleEvaluator.cpp \
+    src/RuleEvaluator/PatternMatcherHS.cpp \
     src/ContentParser/ContentParser.cpp \
     src/Requirements/Requirements.cpp \
     src/CacheL1/CacheL1.cpp \
     src/CacheL2/CacheL2.cpp \
     src/AsyncScanQueue/AsyncScanQueue.cpp
 
-LIBS = `pkg-config --cflags --libs poppler-cpp` -lsqlite3 -pthread
+LIBS = `pkg-config --cflags --libs poppler-cpp` -lsqlite3 -pthread -lhs 
 
 all: fileguard
 

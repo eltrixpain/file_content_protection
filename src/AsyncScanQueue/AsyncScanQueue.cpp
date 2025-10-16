@@ -6,6 +6,7 @@
 #include "ConfigManager.hpp"
 #include "CacheL1.hpp"
 #include "ContentParser.hpp"
+#include "PatternMatcherHS.hpp"
 #include <thread>
 #include <vector>
 #include <atomic>
@@ -118,6 +119,7 @@ static void set_thread_background_mode() {
 // Out: void
 static void async_worker_loop(int log_write_fd,
                               const ConfigManager* config,
+                              const PatternMatcherHS* matcher,
                               CacheL1* cache)
 {
     set_thread_background_mode();
@@ -142,7 +144,7 @@ static void async_worker_loop(int log_write_fd,
                 std::string extracted = ContentParser::extract_text(
                     type, std::string(buffer.data(), buffer.size()), log_write_fd
                 );
-                if (config->matches(extracted)) {
+                if (matcher && matcher->matches(extracted)) {
                     decision = 1; // BLOCK
                 }
             }
@@ -157,6 +159,7 @@ static void async_worker_loop(int log_write_fd,
 // Out: void
 void start_async_workers(int log_write_fd,
                          const ConfigManager& config,
+                         const PatternMatcherHS* matcher,
                          CacheL1& cache,
                          size_t num_workers)
 {
@@ -164,7 +167,8 @@ void start_async_workers(int log_write_fd,
     if (num_workers == 0) num_workers = 1;
     g_workers.reserve(num_workers);
     for (size_t i = 0; i < num_workers; ++i) {
-        g_workers.emplace_back(async_worker_loop, log_write_fd, &config, &cache);
+        g_workers.emplace_back(async_worker_loop, log_write_fd, &config, matcher, &cache);
+
     }
 }
 
