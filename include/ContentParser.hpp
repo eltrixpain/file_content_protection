@@ -1,5 +1,3 @@
-#ifndef CONTENT_PARSER_HPP
-#define CONTENT_PARSER_HPP
 
 #include <string>
 
@@ -15,4 +13,3 @@ public:
                                                   int log_pipe_fd);
 };
 
-#endif // CONTENT_PARSER_HPP

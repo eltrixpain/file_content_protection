@@ -8,8 +8,6 @@
 #include <regex>
 #include <stdexcept>
 #include <filesystem>
-
-// JSON (header-only)
 #include <nlohmann/json.hpp>
 using nlohmann::json;
 

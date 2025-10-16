@@ -14,7 +14,6 @@ class PatternMatcherHS;
 void enqueue_async_scan(int dup_fd, pid_t pid, size_t size);
 bool wait_dequeue_async_scan(AsyncScanTask& out);
 void shutdown_async_scan_queue();
-
 void start_async_workers(int log_write_fd,
                          const ConfigManager& config,
                          const PatternMatcherHS* matcher,
