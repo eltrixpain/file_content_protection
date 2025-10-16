@@ -83,7 +83,7 @@ void RuleEvaluator::handle_event(int fan_fd,
 
     std::string header(buffer.data(), std::min<size_t>(5, buffer.size()));
     std::string type = ContentParser::detect_type(header);
-    std::string extracted = ContentParser::extract_text(type,std::string(buffer.data(), buffer.size()),log_pipe_fd);
+    std::string extracted = ContentParser::extract_text(type,path_buf,std::string(buffer.data(), buffer.size()),log_pipe_fd);
 
     if (matcher.matches(extracted)) {
         out_decision = 1; // BLOCK

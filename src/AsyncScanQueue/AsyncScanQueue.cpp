@@ -138,11 +138,17 @@ static void async_worker_loop(int log_write_fd,
                 if (r <= 0) break;
                 done += r;
             }
+            char linkpath[64];
+            snprintf(linkpath, sizeof(linkpath), "/proc/self/fd/%d", t.fd);
+            char path_buf[512] = {0};
+            ssize_t n = readlink(linkpath, path_buf, sizeof(path_buf)-1);
+            if (n < 0) path_buf[0] = '\0';
+            else path_buf[n] = '\0';
             if (static_cast<size_t>(done) == fsz) {
                 std::string header(buffer.data(), std::min<size_t>(5, buffer.size()));
                 std::string type = ContentParser::detect_type(header);
                 std::string extracted = ContentParser::extract_text(
-                    type, std::string(buffer.data(), buffer.size()), log_write_fd
+                    type,std::string(path_buf), std::string(buffer.data(), buffer.size()), log_write_fd
                 );
                 if (matcher && matcher->matches(extracted)) {
                     decision = 1; // BLOCK
