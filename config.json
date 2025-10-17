@@ -1,6 +1,6 @@
 {
-  "watch_mode": "path",
-  "watch_target": "/home/matrix/Downloads",
+  "watch_mode": "mount",
+  "watch_target": "/home/",
   "patterns": [
     "password\\s*=\\s*.*",
     "secret\\s*=\\s*.*",
@@ -9,7 +9,7 @@
     "ssh-rsa\\s+[A-Za-z0-9\\+/=]+"
   ],
   "cache_capacity_bytes": "80KB",
-  "max_file_size_sync_scan": "10MB",
+  "max_file_size_sync_scan": "15MB",
   "statistical": {
     "duration_sec": 1200
   }
