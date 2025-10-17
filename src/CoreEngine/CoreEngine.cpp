@@ -8,6 +8,7 @@
 #include "StatisticStore.hpp"
 #include "AsyncScanQueue.hpp"
 #include "ContentParser.hpp"
+#include "SimpleSemaphore.hpp"
 
 #include <iostream>
 #include <fcntl.h>
@@ -49,28 +50,12 @@ static std::atomic<uint64_t> total_us{0};
 static std::atomic<uint64_t> total_bytes{0};
 static std::atomic<uint64_t> hit_bytes{0};
 
-// Simple semaphore for limiting concurrent workers
-class SimpleSemaphore {
-public:
-    explicit SimpleSemaphore(int count) : count_(count) {}
-    void acquire() {
-        std::unique_lock<std::mutex> lk(m_);
-        cv_.wait(lk, [&]{ return count_ > 0; });
-        --count_;
-    }
-    void release() {
-        std::lock_guard<std::mutex> lk(m_);
-        ++count_;
-        cv_.notify_one();
-    }
-private:
-    std::mutex m_;
-    std::condition_variable cv_;
-    int count_;
-};
 
 // tune this based on CPU / IO
-static SimpleSemaphore g_worker_slots(/*max_concurrency=*/8);
+unsigned int cores = std::thread::hardware_concurrency();
+unsigned int max_concurrency = std::max(cores * 2, 8u);
+static SimpleSemaphore g_worker_slots(max_concurrency);
+
 
 // Desc: periodically print metrics every n decisions
 // In: uint64_t n (report interval)
