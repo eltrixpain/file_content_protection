@@ -33,7 +33,7 @@ lru: clean fileguard
 lfu: CXXFLAGS = -std=c++17 -Wall -O2 -DLFU -DDEBUG_CACHE
 lfu: clean fileguard
 
-lfu_size: CXXFLAGS += -DDEBUG_CACHE
+lfu_size: CXXFLAGS += -std=c++17 -Wall -O2 -DLFU -DDEBUG_CACHE
 lfu_size: clean fileguard
 
 # --- debug build ---

@@ -167,11 +167,10 @@ uint64_t CacheL2::sum_cached_file_sizes() const {
 bool CacheL2::check_capacity(uint64_t max_bytes) const {
     const uint64_t live_bytes = sum_cached_file_sizes();
 // #ifdef DEBUG_CACHE
-    //std::cout << live_bytes << std::endl;
-    if (live_bytes >= max_bytes) {
-        std::cerr << "[L2] file-bytes quota exceeded: "
-                  << live_bytes << " >= " << max_bytes << " bytes\n";
-    }
+//     if (live_bytes >= max_bytes) {
+//         std::cerr << "[L2] file-bytes quota exceeded: "
+//                   << live_bytes << " >= " << max_bytes << " bytes\n";
+//     }
 // #endif
     return live_bytes < max_bytes;
 }
@@ -208,23 +207,23 @@ int CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision,
         if (l1_->get(st, ruleset_version, d)) {
             if (!check_capacity(max_bytes)) {
                 #ifdef LFU_SIZE
-                std::cout << "\033[31m"
-                        << "[cache][evict] Cache full. Removing based on f(hit_count , size) item"
-                        << "\033[0m" << std::endl;
+                // std::cout << "\033[31m"
+                //         << "[cache][evict] Cache full. Removing based on f(hit_count , size) item"
+                //         << "\033[0m" << std::endl;
                 evict_lfu_size(20,1000);
                 #endif
 
                 #ifdef LRU
-                std::cout << "\033[31m"
-                        << "[cache][evict] Cache full. Removing least recently used item"
-                        << "\033[0m" << std::endl;
+                // std::cout << "\033[31m"
+                //         << "[cache][evict] Cache full. Removing least recently used item"
+                //         << "\033[0m" << std::endl;
                 evict_lru(20);
                 #endif
 
                 #ifdef LFU
-                std::cout << "\033[31m"
-                        << "[cache][evict] Cache full. Removing least frequently used item"
-                        << "\033[0m" << std::endl;
+                // std::cout << "\033[31m"
+                //         << "[cache][evict] Cache full. Removing least frequently used item"
+                //         << "\033[0m" << std::endl;
                 evict_lfu(20);
                 #endif
             }
@@ -262,23 +261,23 @@ void CacheL2::put(const struct stat& st, uint64_t ruleset_version, int decision,
 
     if (!check_capacity(max_bytes)) {
         #ifdef LFU_SIZE
-        std::cout << "\033[31m"
-                << "[cache][evict] Cache full. Removing based on f(hit_count , size) item"
-                << "\033[0m" << std::endl;
+        // std::cout << "\033[31m"
+        //         << "[cache][evict] Cache full. Removing based on f(hit_count , size) item"
+        //         << "\033[0m" << std::endl;
         evict_lfu_size(20,1000);
         #endif
 
         #ifdef LRU
-        std::cout << "\033[31m"
-                << "[cache][evict] Cache full. Removing least recently used item"
-                << "\033[0m" << std::endl;
+        // std::cout << "\033[31m"
+        //         << "[cache][evict] Cache full. Removing least recently used item"
+        //         << "\033[0m" << std::endl;
         evict_lru(20);
         #endif
 
         #ifdef LFU
-        std::cout << "\033[31m"
-                << "[cache][evict] Cache full. Removing least frequently used item"
-                << "\033[0m" << std::endl;
+        // std::cout << "\033[31m"
+        //         << "[cache][evict] Cache full. Removing least frequently used item"
+        //         << "\033[0m" << std::endl;
         evict_lfu(20);
         #endif
     }

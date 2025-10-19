@@ -18,8 +18,10 @@ int main(int argc, char** argv) {
         print_help();
         return 0;
     }
-
-    auto boot = Requirements::run("./config.json", "cache/cache.sqlite");
+    const char* cache_env = std::getenv("FILEGUARD_CACHE");
+    std::string cache_path = cache_env ? cache_env : "cache/cache.sqlite";
+    
+    auto boot = Requirements::run("./config.json", cache_path.c_str());
     if (!boot.ok) {
         std::cerr << "[Main] aborted: " << boot.error << "\n";
         return 1;

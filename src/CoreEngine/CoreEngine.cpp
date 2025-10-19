@@ -35,7 +35,7 @@
 #include <string.h>
 
 #define BUF_SIZE 4096
-#define REPORT_PER_CYCLE 200
+#define REPORT_PER_CYCLE 300
 #define COLOR_GREEN "\033[1;32m"
 #define COLOR_CYAN  "\033[1;36m"
 #define COLOR_RED   "\033[1;31m"

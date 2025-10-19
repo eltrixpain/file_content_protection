@@ -8,8 +8,8 @@
     "private[_-]?key\\s*=\\s*.*",
     "ssh-rsa\\s+[A-Za-z0-9\\+/=]+"
   ],
-  "cache_capacity_bytes": "80KB",
-  "max_file_size_sync_scan": "15MB",
+  "cache_capacity_bytes": "30KB",
+  "max_file_size_sync_scan": "100MB",
   "statistical": {
     "duration_sec": 1200
   }
