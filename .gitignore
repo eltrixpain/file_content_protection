@@ -13,6 +13,7 @@ cache/cache.sqlite-wal
 logs/
 
 idea/
+cache/
 
 statistical_result/
 
