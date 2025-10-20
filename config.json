@@ -1,6 +1,6 @@
 {
-  "watch_mode": "mount",
-  "watch_target": "/home/",
+  "watch_mode": "path",
+  "watch_target": "/home/matrix/Desktop/test_folder",
   "patterns": [
     "password\\s*=\\s*.*",
     "secret\\s*=\\s*.*",
