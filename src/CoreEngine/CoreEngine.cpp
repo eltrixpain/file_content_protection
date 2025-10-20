@@ -7,6 +7,7 @@
 #include "CacheL2.hpp"
 #include "StatisticStore.hpp"
 #include "AsyncScanQueue.hpp"
+#include "Warmup.hpp"
 #include "ContentParser.hpp"
 #include "SimpleSemaphore.hpp"
 
@@ -127,6 +128,10 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
     // [Starting thread pool] (kept for other async parts if used)
     start_async_workers(log_pipe[1], config, &hs, l1, /*num_workers=*/1);
 
+    if (config.getWarmupMode() == WarmupMode::Pattern) {
+        Warmup::pattern_warmup(cache_db, config);
+    }
+
     // [Start main loop of program]
     std::cout << "[CoreEngine] Watching " << target << " for access events...\n";
     while (true) {
@@ -165,7 +170,15 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
             struct stat st{};
             if (fstat(metadata->fd, &st) == 0) {
                 int decision = 0;
+                char fd_link_opened[64];
+                snprintf(fd_link_opened, sizeof(fd_link_opened), "/proc/self/fd/%d", metadata->fd);
+                char opened_path_buf[512];
+                ssize_t opened_n = readlink(fd_link_opened, opened_path_buf, sizeof(opened_path_buf) - 1);
+                std::string opened_path = (opened_n >= 0) ? std::string(opened_path_buf, opened_n) : std::string();
 
+                if (config.getWarmupMode() == WarmupMode::Scope && !opened_path.empty()) {
+                    Warmup::scope_warmup_on_access(opened_path);
+                }
                 #ifdef DEBUG
                 pid_t pid = metadata->pid;
                 char proc_comm[256] = {0};

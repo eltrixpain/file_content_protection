@@ -305,6 +305,7 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
         std::cerr << "[ruleset] initialized. version=" << ruleset_version_
                   << " scope_changed=false patterns_changed=false\n";
         #endif
+        warmup_mode_ = WarmupMode::None;
         return true;
     }
 
@@ -314,6 +315,7 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
         #ifdef DEBUG
         std::cerr << "[ruleset] no change. version=" << ruleset_version_ << "\n";
         #endif
+        warmup_mode_ = WarmupMode::None;
         return true;
     }
 
@@ -348,6 +350,7 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
         #ifdef DEBUG
         std::cerr << "[ruleset] scope changed (or both). bumped version to " << ruleset_version_ << "\n";
         #endif
+        warmup_mode_ = WarmupMode::Scope;
         return true;
     }
 
@@ -375,6 +378,7 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
         #ifdef DEBUG
         std::cerr << "[ruleset] patterns changed (scope unchanged). bumped version to " << ruleset_version_ << "\n";
         #endif
+        warmup_mode_ = WarmupMode::Pattern;
         return true;
     }
 }

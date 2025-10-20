@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <sqlite3.h>
 
+enum class WarmupMode { None, Scope, Pattern };
+
 class ConfigManager {
 public:
     explicit ConfigManager() = default;
@@ -22,6 +24,7 @@ public:
     std::uint64_t max_cache_bytes() const { return cache_capacity_bytes_; }
     std::uint64_t max_file_size_sync_scan() const { return max_file_size_sync_scan_; }
     std::uint64_t getStatisticDurationSeconds() const { return duration_sec_; }
+    WarmupMode getWarmupMode() const { return warmup_mode_; }
 
 private:
     std::string watch_mode_;
@@ -32,4 +35,5 @@ private:
     std::uint64_t cache_capacity_bytes_ = 0;
     std::uint64_t max_file_size_sync_scan_ = 0;
     std::uint64_t duration_sec_ = 0;
+    WarmupMode warmup_mode_ = WarmupMode::None;
 };
