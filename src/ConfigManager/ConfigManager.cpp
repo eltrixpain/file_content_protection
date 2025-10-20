@@ -305,7 +305,7 @@ bool ConfigManager::initRulesetVersion(sqlite3* db) {
         std::cerr << "[ruleset] initialized. version=" << ruleset_version_
                   << " scope_changed=false patterns_changed=false\n";
         #endif
-        warmup_mode_ = WarmupMode::None;
+        warmup_mode_ = WarmupMode::Scope;
         return true;
     }
 

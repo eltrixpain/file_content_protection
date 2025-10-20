@@ -5,6 +5,7 @@
 #include <utility>
 #include "ConfigManager.hpp"
 #include "CacheL1.hpp"
+#include "CacheL2.hpp"
 #include "ContentParser.hpp"
 #include "PatternMatcherHS.hpp"
 #include <thread>
@@ -120,7 +121,7 @@ static void set_thread_background_mode() {
 static void async_worker_loop(int log_write_fd,
                               const ConfigManager* config,
                               const PatternMatcherHS* matcher,
-                              CacheL1* cache)
+                              CacheL2* l2)
 {
     set_thread_background_mode();
     for (;;) {
@@ -155,7 +156,7 @@ static void async_worker_loop(int log_write_fd,
                 }
             }
         }
-        cache->put(st, config->getRulesetVersion(), decision, config->max_cache_bytes());
+        l2->put(st, config->getRulesetVersion(), decision, config->max_cache_bytes());
         if (t.fd >= 0) ::close(t.fd);
     }
 }
@@ -166,15 +167,14 @@ static void async_worker_loop(int log_write_fd,
 void start_async_workers(int log_write_fd,
                          const ConfigManager& config,
                          const PatternMatcherHS* matcher,
-                         CacheL1& cache,
+                         CacheL2& l2,
                          size_t num_workers)
 {
     if (g_started.exchange(true)) return; // already started
     if (num_workers == 0) num_workers = 1;
     g_workers.reserve(num_workers);
     for (size_t i = 0; i < num_workers; ++i) {
-        g_workers.emplace_back(async_worker_loop, log_write_fd, &config, matcher, &cache);
-
+        g_workers.emplace_back(async_worker_loop, log_write_fd, &config, matcher, &l2);
     }
 }
 
