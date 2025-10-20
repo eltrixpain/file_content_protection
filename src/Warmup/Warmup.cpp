@@ -9,6 +9,7 @@
 #include <thread>
 #include <unistd.h>
 #include <iostream>
+#include <vector>
 #include "AsyncScanQueue.hpp"
 
 
@@ -21,6 +22,32 @@ struct DevInoHash {
         return std::hash<long long>()((k.dev << 1) ^ (k.ino << 17) ^ (k.dev >> 7));
     }
 };
+
+static std::vector<DevIno>
+select_top_scored_from_l1(sqlite3* db, std::size_t limit) {
+    std::vector<DevIno> out;
+    if (!db || limit == 0) return out;
+
+    const char* sql =
+        "SELECT dev, ino "
+        "FROM cache_entries "
+        "ORDER BY (CAST(hit_count AS REAL) * CAST(size AS REAL)) DESC, "
+        "         last_access_ts DESC "
+        "LIMIT ?;";
+
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &st, nullptr) != SQLITE_OK) return out;
+    sqlite3_bind_int(st, 1, (int)limit);
+
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        out.push_back(DevIno{
+            sqlite3_column_int64(st, 0),
+            sqlite3_column_int64(st, 1)
+        });
+    }
+    sqlite3_finalize(st);
+    return out;
+}
 
 static const size_t kMaxDistinctDirs   = 256;   
 static const size_t kMaxFilesTotal     = 10000; 
