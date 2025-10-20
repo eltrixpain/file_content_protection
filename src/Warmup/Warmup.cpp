@@ -79,6 +79,15 @@ void scope_warmup_on_access(const std::string& path) {
             }
         }
         closedir(d);
+        #ifdef DEBUG
+        {
+            std::lock_guard<std::mutex> lk(g_mu);
+            std::cerr << "[warmup-scope] total_dirs=" << g_dirs_seen.size()
+                    << " total_files=" << g_files_enqueued
+                    << " (dir: " << dir << ")\n";
+        }
+        #endif
+
     }).detach();
 }
 
