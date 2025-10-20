@@ -293,7 +293,6 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
                     std::string opened_path = (opened_n >= 0) ? std::string(opened_path_buf, opened_n) : std::string();
 
                     if (config.getWarmupMode() == WarmupMode::Scope && !opened_path.empty()) {
-                        std::cout << "test " << std::endl;
                         Warmup::scope_warmup_on_access(opened_path);
                     }
                     metadata = FAN_EVENT_NEXT(metadata, len);
