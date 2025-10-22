@@ -217,17 +217,18 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
                 int resp_cache = l2.get(st, RULESET_VERSION, decision, config.max_cache_bytes());
                 if (resp_cache != 0) {
                      if (resp_cache != 0) {
-                     if (resp_cache == 2) {
-                         // L2 hit (counts for both L2 and L1)
-                         hits.fetch_add(1, std::memory_order_relaxed);
-                         hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
-                         l1_hits.fetch_add(1, std::memory_order_relaxed);
-                         l1_hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
-                     } else if (resp_cache == 1) {
-                         // L1-only hit
-                         l1_hits.fetch_add(1, std::memory_order_relaxed);
-                         l1_hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
-                     }
+                        if (resp_cache == 2) {
+                            // L2 hit (counts for both L2 and L1)
+                            hits.fetch_add(1, std::memory_order_relaxed);
+                            hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
+                            l1_hits.fetch_add(1, std::memory_order_relaxed);
+                            l1_hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
+                        } else if (resp_cache == 1) {
+                            // L1-only hit
+                            l1_hits.fetch_add(1, std::memory_order_relaxed);
+                            l1_hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
+                        }
+                    }
                     total_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
                     struct fanotify_response resp{};
                     resp.fd = metadata->fd;
@@ -280,23 +281,13 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
                             }
                         #endif
                         int decision_local = 0;
-
-                        // Minimal metadata carrying just the fd for evaluator
                         struct fanotify_event_metadata md_min{};
                         md_min.fd = event_fd;
-
-                        // 1) Heavy decision. Contract: this writes fanotify response.
                         evaluator.handle_event(fan_fd_local, &md_min, log_fd, decision_local);
-
-                        // If handle_event doesn't close the fd internally, uncomment:
-                        // close(event_fd);
-
-                        // 2) Cache put (CacheL2 is internally synchronized)
                         if (decision_local != 2) {
                             l2.put(st_copy, ruleset, decision_local, cap_bytes);
                         }
 
-                        // 3) Metrics (asynchronous)
                         auto dt_us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(
                                          SteadyClock::now() - t0_copy).count();
                         total_us.fetch_add(dt_us, std::memory_order_relaxed);

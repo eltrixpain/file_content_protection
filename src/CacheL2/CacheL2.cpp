@@ -6,6 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 
 
 static std::mutex g_l1_mu;
@@ -182,6 +183,8 @@ int CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision,
     const int64_t cur_mtime_ns = to_ns(st.st_mtim.tv_sec, st.st_mtim.tv_nsec);
     const int64_t cur_ctime_ns = to_ns(st.st_ctim.tv_sec, st.st_ctim.tv_nsec);
     const int64_t cur_size     = static_cast<int64_t>(st.st_size);
+    using Clock = std::chrono::high_resolution_clock;
+    auto t_start = Clock::now();
 
     {
         std::shared_lock rlk(mu_);
@@ -197,12 +200,17 @@ int CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision,
                 #ifdef DEBUG
                 std::cout << "[L2] Cache hit — served from Level 2" << std::endl;
                 #endif
+                #ifdef DEBUG_TIMING
+                auto dt_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - t_start).count();
+                std::cout << "[timing] L2_get_ns=" << dt_ns << " size=" << cur_size << "\n";
+                #endif
                 return 2;;
             }
         }
     }
 
     if (l1_) {
+        auto t_l1_start = Clock::now();
         int d = 0;
         if (l1_->get(st, ruleset_version, d)) {
             if (!check_capacity(max_bytes)) {
@@ -242,7 +250,10 @@ int CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision,
             map_[k] = ent;
 
             decision = d;
-            
+            #ifdef DEBUG_TIMING
+            auto dt_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - t_l1_start).count();
+            std::cout << "[timing] L1_get_ns=" << dt_ns << " size=" << cur_size << "\n";
+            #endif
             return 1;
         }
     }

@@ -41,6 +41,9 @@ lfu_size: clean fileguard
 debug: CXXFLAGS += -DDEBUG -g 
 debug: fileguard
 
+debug_timing: CXXFLAGS += -DDEBUG_TIMING 
+debug_timing: fileguard
+
 
 clean:
 	rm -f fileguard
