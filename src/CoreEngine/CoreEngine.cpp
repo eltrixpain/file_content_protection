@@ -77,8 +77,6 @@ auto report_every = [](uint64_t n) {
 
         std::cout << COLOR_RED
           << "[metrics] decisions=" << d
-          << " hit_rate=" << hit_rate << "% "
-          << "byte_hit_rate=" << byte_hit_rate << "% "
           << " L2_hit_rate=" << hit_rate << "% "
           << "L2_byte_hit_rate=" << byte_hit_rate << "% "
           << "L1_hit_rate=" << l1_hit_rate << "% "
@@ -112,7 +110,7 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
         exit(1);
     }
 
-    // [Create new thread for logging]
+    // [Fork new process for logging]
     int log_pipe[2];
     if (pipe(log_pipe) == -1) { perror("pipe"); exit(1); }
 
@@ -215,19 +213,22 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
                 << std::endl;
                 #endif
 
-                // Cache path (fast path, handled synchronously)
+                // Cache path
                 int resp_cache = l2.get(st, RULESET_VERSION, decision, config.max_cache_bytes());
                 if (resp_cache != 0) {
-                    if (resp_cache == 2) {
-                        hits.fetch_add(1, std::memory_order_relaxed);
-                        hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
-                    }
-                    else if (resp_cache == 1) {
-                        l1_hits.fetch_add(1, std::memory_order_relaxed);
-                        l1_hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
-                    }
+                     if (resp_cache != 0) {
+                     if (resp_cache == 2) {
+                         // L2 hit (counts for both L2 and L1)
+                         hits.fetch_add(1, std::memory_order_relaxed);
+                         hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
+                         l1_hits.fetch_add(1, std::memory_order_relaxed);
+                         l1_hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
+                     } else if (resp_cache == 1) {
+                         // L1-only hit
+                         l1_hits.fetch_add(1, std::memory_order_relaxed);
+                         l1_hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
+                     }
                     total_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
-
                     struct fanotify_response resp{};
                     resp.fd = metadata->fd;
                     resp.response = (decision == 0) ? FAN_ALLOW : FAN_DENY;
