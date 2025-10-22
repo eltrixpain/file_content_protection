@@ -183,8 +183,10 @@ int CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision,
     const int64_t cur_mtime_ns = to_ns(st.st_mtim.tv_sec, st.st_mtim.tv_nsec);
     const int64_t cur_ctime_ns = to_ns(st.st_ctim.tv_sec, st.st_ctim.tv_nsec);
     const int64_t cur_size     = static_cast<int64_t>(st.st_size);
+    #ifdef DEBUG_TIMING
     using Clock = std::chrono::high_resolution_clock;
     auto t_start = Clock::now();
+    #endif
 
     {
         std::shared_lock rlk(mu_);
@@ -210,7 +212,9 @@ int CacheL2::get(const struct stat& st, uint64_t ruleset_version, int& decision,
     }
 
     if (l1_) {
+        #ifdef DEBUG_TIMING
         auto t_l1_start = Clock::now();
+        #endif
         int d = 0;
         if (l1_->get(st, ruleset_version, d)) {
             if (!check_capacity(max_bytes)) {

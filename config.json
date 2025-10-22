@@ -1,12 +1,13 @@
 {
-  "watch_mode": "mount",
-  "watch_target": "/home/",
+  "watch_mode": "path",
+  "watch_target": "/home/matrix/Desktop/test_folder",
   "patterns": [
     "password\\s*=\\s*.*",
     "secret\\s*=\\s*.*",
     "api[_-]?key\\s*=\\s*.*",
     "private[_-]?key\\s*=\\s*.*",
-    "ssh-rsa\\s+[A-Za-z0-9\\+/=]+"
+    "ssh-rsa\\s+[A-Za-z0-9\\+/=]+",
+    "testetest"
   ],
   "cache_capacity_bytes": "30KB",
   "max_file_size_sync_scan": "100MB",

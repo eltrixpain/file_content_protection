@@ -137,16 +137,16 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
     // [Starting thread pool] (kept for other async parts if used)
     start_async_workers(log_pipe[1], config, &hs, l2, /*num_workers=*/1);
 
-    if (config.getWarmupMode() == WarmupMode::Pattern) {
-        std::cout << "[CoreEngine] engine will start after pattern warmup…\n";
-        std::thread warm_thr([&](){
-            const size_t top_k = 20000;     // max candidates by hit
-            const double ratio = 0.80;      // fill L2 up to 80% of capacity
-            Warmup::pattern_warmup(cache_db, config, top_k, ratio);
-        });
-        warm_thr.join();
-        std::cout << "[CoreEngine] pattern warmup finished. starting engine…\n";
-    }
+    // if (config.getWarmupMode() == WarmupMode::Pattern) {
+    //     std::cout << "[CoreEngine] engine will start after pattern warmup…\n";
+    //     std::thread warm_thr([&](){
+    //         const size_t top_k = 20000;     // max candidates by hit
+    //         const double ratio = 0.80;      // fill L2 up to 80% of capacity
+    //         Warmup::pattern_warmup(cache_db, config, top_k, ratio);
+    //     });
+    //     warm_thr.join();
+    //     std::cout << "[CoreEngine] pattern warmup finished. starting engine…\n";
+    // }
 
     // [Start main loop of program]
     std::cout << "[CoreEngine] Watching " << target << " for access events...\n";
