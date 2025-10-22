@@ -44,12 +44,16 @@
 
 using SteadyClock = std::chrono::steady_clock;
 
-// Global metrics (atomic because workers update them)
+//Gloabal metrics
 static std::atomic<uint64_t> decisions{0};
-static std::atomic<uint64_t> hits{0};
 static std::atomic<uint64_t> total_us{0};
 static std::atomic<uint64_t> total_bytes{0};
+// L2 metric
+static std::atomic<uint64_t> hits{0};
 static std::atomic<uint64_t> hit_bytes{0};
+// L1 metrics
+static std::atomic<uint64_t> l1_hits{0};
+static std::atomic<uint64_t> l1_hit_bytes{0};
 
 
 // tune this based on CPU / IO
@@ -68,10 +72,17 @@ auto report_every = [](uint64_t n) {
         double hit_rate = (double)hits.load(std::memory_order_relaxed) * 100.0 / (double)d;
         uint64_t tb = total_bytes.load(std::memory_order_relaxed);
         double byte_hit_rate = tb ? (double)hit_bytes.load(std::memory_order_relaxed) * 100.0 / (double)tb : 0.0;
+        double l1_hit_rate = (double)l1_hits.load(std::memory_order_relaxed) * 100.0 / (double)d;
+        double l1_byte_hit_rate = tb ? (double)l1_hit_bytes.load(std::memory_order_relaxed) * 100.0 / (double)tb : 0.0;
+
         std::cout << COLOR_RED
           << "[metrics] decisions=" << d
           << " hit_rate=" << hit_rate << "% "
           << "byte_hit_rate=" << byte_hit_rate << "% "
+          << " L2_hit_rate=" << hit_rate << "% "
+          << "L2_byte_hit_rate=" << byte_hit_rate << "% "
+          << "L1_hit_rate=" << l1_hit_rate << "% "
+          << "L1_byte_hit_rate=" << l1_byte_hit_rate << "% "
           << "avg_decision=" << avg_ms << " ms"
           << COLOR_RESET << std::endl;
     }
