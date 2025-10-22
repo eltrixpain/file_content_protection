@@ -222,6 +222,10 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
                         hits.fetch_add(1, std::memory_order_relaxed);
                         hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
                     }
+                    else if (resp_cache == 1) {
+                        l1_hits.fetch_add(1, std::memory_order_relaxed);
+                        l1_hit_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
+                    }
                     total_bytes.fetch_add((uint64_t)st.st_size, std::memory_order_relaxed);
 
                     struct fanotify_response resp{};
