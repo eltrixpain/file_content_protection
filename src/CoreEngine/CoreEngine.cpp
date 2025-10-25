@@ -295,6 +295,16 @@ void start_core_engine_blocking(const ConfigManager& config, sqlite3* cache_db) 
                         total_bytes.fetch_add((uint64_t)st_copy.st_size, std::memory_order_relaxed);
 
                         report_every(REPORT_PER_CYCLE);
+                        #ifdef DEBUG_TIMING
+                        {
+                            using Clock = std::chrono::steady_clock; 
+                            auto dt_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                            Clock::now() - t0_copy).count();
+                            std::cout << "[timing] MISS_decision_ns=" << dt_ns
+                                    << " size=" << (long long)st_copy.st_size
+                                    << std::endl;
+                        }
+                        #endif
 
                         g_worker_slots.release();
                     }).detach();
