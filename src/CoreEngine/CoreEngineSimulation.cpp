@@ -287,7 +287,7 @@ void start_core_engine_simulation(const ConfigManager& config, const std::string
         return;
     }
 
-    std::string filepath = "statistical_result/" + filename;
+    std::string filepath = filename;
 
     if (!std::filesystem::exists(filepath)) {
         std::cerr << "[Simulation] File not found: " << filepath << "\n";
