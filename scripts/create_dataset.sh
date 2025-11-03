@@ -3,7 +3,7 @@ mkdir -p ../../test_folder
 NUM_FILES=600
 
 for i in $(seq 1 $NUM_FILES); do
-  SIZE=$(( (RANDOM % 5000) + 1 ))
+  SIZE=$(( (RANDOM % 30000) + 1 ))
 
   base64 /dev/urandom | head -c ${SIZE}K > ../../test_folder/test_${i}.txt
 done

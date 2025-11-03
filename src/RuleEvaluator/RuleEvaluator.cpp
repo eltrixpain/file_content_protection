@@ -9,10 +9,13 @@
 #include <cstring>
 #include <ctime>
 #include <vector>
+#include <atomic>
 #include <algorithm>
 #include <sys/stat.h>
 
-
+#ifdef DEBUG
+static std::atomic<uint64_t> g_big_files{0};
+#endif
 RuleEvaluator::RuleEvaluator(const ConfigManager& config, const PatternMatcherHS& matcher)
     : config(config), matcher(matcher) {}
 
@@ -60,6 +63,11 @@ void RuleEvaluator::handle_event(int fan_fd,
     size_t fsz = static_cast<size_t>(st.st_size);
     std::uint64_t max_sync = config.max_file_size_sync_scan();
     if (max_sync > 0 && fsz > max_sync) {
+        #ifdef DEBUG
+        auto c = g_big_files.fetch_add(1, std::memory_order_relaxed) + 1;
+        std::cerr << "[bigfile] size=" << fsz << " max_sync=" << max_sync << " total=" << c << std::endl;
+        #endif
+
         // duplicate fd
         int dupfd = fcntl(metadata->fd, F_DUPFD_CLOEXEC, 3);
         if (dupfd >= 0) {

@@ -1,6 +1,6 @@
 {
   "watch_mode": "mount",
-  "watch_target": "/home/",
+  "watch_target": "/home",
   "patterns": [
     "password\\s*=\\s*.*",
     "secret\\s*=\\s*.*",
@@ -10,7 +10,7 @@
     "testetest"
   ],
   "cache_capacity_bytes": "30KB",
-  "max_file_size_sync_scan": "100MB",
+  "max_file_size_sync_scan": "10MB",
   "statistical": {
     "duration_sec": 1200
   }
