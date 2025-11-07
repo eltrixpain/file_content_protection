@@ -59,7 +59,7 @@ static std::atomic<uint64_t> l1_hit_bytes{0};
 // tune this based on CPU / IO
 unsigned int cores = std::thread::hardware_concurrency();
 unsigned int max_concurrency = std::max(cores * 2, 8u);
-static SimpleSemaphore g_worker_slots(max_concurrency);
+static SimpleSemaphore g_worker_slots(1);
 
 
 // Desc: periodically print metrics every n decisions
